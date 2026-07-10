@@ -25,7 +25,8 @@ cd claude-rules && ./install.sh
 |---|---|
 | `rules/global-rules.md` | **正本**。`~/.claude/CLAUDE.md` の claude-rules ブロックに注入される共通骨格（§1 進行管理 / §2 checkpoint 方式・数値上限 / §3 進行ルール / §4 書き分け / §5 Git / §6 memory 不使用 / §7 PJ側 CLAUDE.md の書き分け） |
 | `skills/init-rules/` | **正本**。新規/既存PJに 4軸 + checkpoint 構成を立ち上げるスキル。`~/.claude/skills/init-rules` へコピーされる |
-| `install.sh` | 上記2つを配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に CLAUDE.md の 14KB 上限を目安チェック |
+| `hooks/triage-classifier.sh` | **正本**。UserPromptSubmit フック：プロンプトを haiku がヘッドレス分類（T0/T1/T2a/CADENCE）し、T0 以外のときだけ判定をコンテキスト注入する。quorum/cadence トリアージの発動漏れ対策（判断をメインモデルの自己申告から独立させる）。`~/.claude/hooks/` へコピーされ、settings.json への登録は **opt-in**（install.sh が案内を表示。+2〜6秒/プロンプト） |
+| `install.sh` | 上記を配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に CLAUDE.md の 14KB 上限を目安チェック |
 
 ## ルールを変更するとき
 

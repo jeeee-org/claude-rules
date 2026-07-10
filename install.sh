@@ -24,6 +24,11 @@ mkdir -p "$CLAUDE_CONFIG_DIR/skills"
 rm -rf "$CLAUDE_CONFIG_DIR/skills/init-rules"
 cp -R "$SRC_DIR/skills/init-rules" "$CLAUDE_CONFIG_DIR/skills/init-rules"
 
+# トリアージ分類フックをコピー（settings.json への登録は opt-in。末尾の案内参照）
+mkdir -p "$CLAUDE_CONFIG_DIR/hooks"
+cp "$SRC_DIR/hooks/triage-classifier.sh" "$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh"
+chmod +x "$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh"
+
 # グローバル CLAUDE.md に claude-rules ブロックを注入する
 # （マーカー間を置換、無ければ末尾に追記。quorum-triage / cadence-triage と同方式）
 if [ -f "$TARGET_MD" ] && grep -q 'claude-rules:begin' "$TARGET_MD"; then
@@ -46,5 +51,11 @@ fi
 echo "✓ インストール完了: $CLAUDE_CONFIG_DIR"
 echo "  - CLAUDE.md（claude-rules ブロック）"
 echo "  - skills/init-rules"
+echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
 echo ""
 echo "Claude Code を再起動するか /reload-skills を実行してください。"
+echo ""
+echo "（opt-in）quorum/cadence トリアージの自動判定を有効化するには ~/.claude/settings.json の hooks に追記:"
+echo '  {"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command",'
+echo "    \"command\": \"$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh\", \"timeout\": 30}]}]}}"
+echo "  ※ プロンプトごとに haiku 分類が走る（+2〜6秒・微小コスト）。24字未満と / 始まりはスキップ。"
