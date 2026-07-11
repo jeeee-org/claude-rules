@@ -1,6 +1,6 @@
 # claude-rules
 
-Claude Code の**グローバル共通ルール**（`~/.claude/CLAUDE.md` の本体：4軸 + checkpoint の進行管理・Git 既定・memory 不使用・スキル化ルール・常時ロード数値上限）と **`/init-rules` スキル**を、複数PCへ配布・同期するためのリポジトリ。
+Claude Code と Codex の**グローバル共通ルール**、および各環境の `init-rules` スキルを複数PCへ配布・同期するためのリポジトリ。LLM固有の指示面は `~/.claude/CLAUDE.md` と `~/.codex/AGENTS.md` に分離し、4軸 + checkpoint のPJ文書は共有する。
 
 [quorum](https://github.com/jeeee-org/quorum) / [cadence](https://github.com/jeeee-org/cadence) と同じ **install.sh + マーカーブロック方式**。3リポを入れると `~/.claude/CLAUDE.md` は次の3ブロック構成になる：
 
@@ -24,9 +24,27 @@ cd claude-rules && ./install.sh
 | パス | 役割 |
 |---|---|
 | `rules/global-rules.md` | **正本**。`~/.claude/CLAUDE.md` の claude-rules ブロックに注入される共通骨格（§1 進行管理 / §2 checkpoint 方式・数値上限 / §3 進行ルール / §4 書き分け / §5 Git / §6 memory 不使用 / §7 PJ側 CLAUDE.md の書き分け） |
+| `rules/codex-global-rules.md` | **Codex用の独立した正本**。`~/.codex/AGENTS.md` の codex-rules ブロックへ注入 |
 | `skills/init-rules/` | **正本**。新規/既存PJに 4軸 + checkpoint 構成を立ち上げるスキル。`~/.claude/skills/init-rules` へコピーされる |
+| `skills/codex-init-rules/` | Codex版。`~/.codex/skills/init-rules` へコピーされ、PJ固有指示は `AGENTS.md` に生成する |
+| `skills/codex-triage/` | 「トリアージして」等の自然言語で発動するCodex版明示トリアージスキル |
 | `hooks/triage-classifier.sh` | **正本**。UserPromptSubmit フック：プロンプトを haiku がヘッドレス分類（T0/T1/T2a/CADENCE）し、T0 以外のときだけ判定をコンテキスト注入する。quorum/cadence トリアージの発動漏れ対策（判断をメインモデルの自己申告から独立させる）。`~/.claude/hooks/` へコピーされ、settings.json への登録は **opt-in**（install.sh が案内を表示。+2〜6秒/プロンプト） |
-| `install.sh` | 上記を配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に CLAUDE.md の 14KB 上限を目安チェック |
+| `hooks/triage-rubric.txt` | **分類基準の唯一の正本**。Claudeフック、Codexラッパー、Codex `triage` スキルで共有 |
+| `hooks/codex-triage.sh` | Codexの初回プロンプトを `gpt-5.4-mini` で分類する起動ラッパー。`~/.codex/hooks/codex-triage` へ配置 |
+| `install.sh` | 上記を両環境へ配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に CLAUDE.md / AGENTS.md の 14KB 上限を目安チェック |
+
+`install.sh` は両方を既定で配置する。配置先は `CLAUDE_CONFIG_DIR` / `CODEX_HOME` で変更でき、再実行は冪等。
+CLIのインストール有無ではスキップしない。新PCへの設定の事前配布を可能にするため、Claude CodeまたはCodexが未導入でも対応する設定ディレクトリを作成する。
+
+Codex 0.144.1 の安定版hooksには、Claude Codeの `UserPromptSubmit` に相当する各ターンイベントがない。そのためCodex版は初回プロンプトだけを分類する明示的な起動ラッパーとしている。
+
+```bash
+~/.codex/hooks/codex-triage -- "調査・実装してほしい内容"
+```
+
+分類子プロセスは `--ephemeral --ignore-user-config` で起動し、再帰とセッション保存を避ける。モデルは `CODEX_TRIAGE_MODEL`、タイムアウトは `CODEX_TRIAGE_TIMEOUT` で上書きできる。分類失敗時は通常のCodex起動へフォールバックする。
+
+独立モデルでの事前分類が不要なら、通常のCodex会話で「この依頼をトリアージしてから進めて」と自然言語で指定できる。グローバル `AGENTS.md` が `$triage` を必須発動し、ユーザーが内部コマンドを覚える必要はない。この経路ではメインCodex自身が分類する。
 
 ## ルールを変更するとき
 

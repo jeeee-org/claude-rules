@@ -1,0 +1,4 @@
+interface:
+  display_name: "トリアージ"
+  short_description: "依頼を分類して適切な調査・レビュー・実行フローを選択"
+  default_prompt: "$triage を使って、この依頼を分類してから進めてください。"
