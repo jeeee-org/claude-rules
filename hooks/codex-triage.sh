@@ -49,7 +49,7 @@ fi
 case "$line" in
   T0) rm -f "$tmp"; trap - EXIT; exec codex "${args[@]}" "$prompt" ;;
   T1\|*|T2a\|*|CADENCE\|*)
-    context="自動トリアージ（Codex分類ラッパー）: $line 相当と判定。分類の意味は T1=高ステークス×広さ型（並列・多角レビュー）、T2a=高ステークス×深さ型（単独の深い検証）、CADENCE=完成条件が明確な被覆型監査・調査・定型修正。これは参考情報であり、ユーザーの明示指定を常に優先する。Codex版 quorum/cadence が利用可能なら該当フローを提案する。"
+    context="自動トリアージ（Codex分類ラッパー）: $line 相当と判定。分類の意味は T1=高ステークス×広さ型（並列・多角レビュー）、T2a=高ステークス×深さ型（単独の深い検証）、CADENCE=完成条件が明確な被覆型監査・調査・定型修正。これは参考情報であり、ユーザーの明示指定を常に優先する。分類だけの依頼では判定だけ返す。実行依頼でT1なら、Codex版 \$quorum が利用可能な場合は提案で止めずに使用する。CADENCEも対応するCodex版フローが利用可能なら使用する。"
     rm -f "$tmp"
     trap - EXIT
     exec codex "${args[@]}" "$context
