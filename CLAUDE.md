@@ -15,7 +15,7 @@ Claude Code へのプロジェクト指示書。**会話開始時に必ず読む
 
 ## サイズ上限（グローバル §2 の実務メモ）
 
-`~/.claude/CLAUDE.md` は claude-rules / quorum / cadence の3ブロック合計で **14KB**。このリポが増やせるのは自分のブロック分だけなので、`rules/global-rules.md` に追記したら `./install.sh` の超過警告を必ず確認する。
+`~/.claude/CLAUDE.md` は claude-rules / quorum / cadence の3ブロック合計で **14,336B**（1024系）。このリポが増やせるのは自分のブロック分だけなので、`rules/global-rules.md` に追記したら `./install.sh` 末尾の `tools/check-limits.sh` の判定を必ず確認する。
 
 ## 4軸ドキュメント
 
