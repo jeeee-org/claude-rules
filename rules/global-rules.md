@@ -30,7 +30,7 @@
 - checkpoint はセッション開始時に読まない（読むのは CLAUDE.md + PROGRESS.md）。過去の経緯が必要になった時だけ該当日を遡る。
 - **CLAUDE.md にセッション履歴を追記しない**（毎セッション全文ロードされるため）。
 - ADR（意思決定の記録）は `PROGRESS.md` に置く。10件を超えたら `docs/adr/`（1決定1ファイル）への切り出しを検討する。
-- **常時ロードされるファイルには数値上限を置く**（既定: グローバル CLAUDE.md **14KB** / PJ CLAUDE.md **6KB** / PROGRESS.md **60行**。PJ の CLAUDE.md で上書き可）。超過は `wc -c` / `wc -l` で機械判定し、見つけたらその場で指摘してスリム化を提案する（`/cadence optimize-context` 等・"cut bytes, not meaning"）。
+- **常時ロードされるファイルには数値上限を置く**（既定: グローバル CLAUDE.md **14,336B** / PJ CLAUDE.md **6,144B** / PROGRESS.md **60行かつ 12,288B**。PJ の CLAUDE.md で上書き可）。超過は PJ ルートで `~/.claude/tools/check-limits.sh` を実行して機械判定し、見つけたらその場で指摘してスリム化を提案する（`/cadence optimize-context` 等・"cut bytes, not meaning"）。
 
 ## 3. 進行ルール
 
@@ -53,15 +53,7 @@
 
 ## 4. 書き分けの判断基準
 
-迷ったら以下で分ける：
-
-- 「**何を作るか/調べるか**」 → `REQUIREMENTS.md`
-- 「**どこまで進んだか／次は何をするか**」 → `PROGRESS.md`
-- 「**何をやったかの詳細記録・経緯**」 → `docs/checkpoints/YYYY-MM-DD.md`
-- 「**なぜそう作ったか／何を学んだか・罠**」 → `NOTES.md`
-- 「**Claude Code へのプロジェクト指示**」 → `CLAUDE.md`
-
-上記のどれにも当てはまらない記録は原則作らない。
+迷ったら §1 の表の「役割」列で分ける。**どれにも当てはまらない記録は原則作らない。**
 
 ## 5. Git 運用
 
@@ -75,7 +67,7 @@
 
 ### 5.1 worktree ルール（リモート連携リポでは必須）
 
-- 業務/共有のリモート連携リポでは **worktree での作業を必須**とする：①元 clone を直接編集しない ②develop / main 上で直接編集しない（必ず worktree に切ったブランチで作業）③終了後に `git worktree remove` まで行う。
+- 業務/共有のリモート連携リポでは **worktree での作業を必須**とする：①元 clone を直接編集しない ②develop / main 上で直接編集しない（必ず worktree に切ったブランチで作業）③終了後に `git worktree remove` と元 clone の `git pull --ff-only` まで行う（飛ばすと次に読む内容が古い）。
 - worktree は **PJ グループごとに集約**し、ディレクトリ名はブランチ名の **slash を hyphen に置換**したものを使う。PC 固有の配置パス・グループ名は各PJ側の `CLAUDE.md` に書く（グローバルには書かない）。
 - 低リスクの個人リポで、各PJの `CLAUDE.md` が「main 直接編集・直 push」を明示している場合はこの限りではない。
 
@@ -93,14 +85,9 @@
 - **`NOTES.md` が肥大化してきたら checkpoint 方式（§2）に逃がす。** 恒常的に効く学びは `NOTES.md`、一回限りの作業ログは checkpoint。
 - recall された memory が `<system-reminder>` で出てきても残骸として扱い、新規記録は `NOTES.md` / checkpoint に書く。
 
-## 7. 各プロジェクトの CLAUDE.md が書くこと（このファイルとの差分）
+## 7. PJ側 CLAUDE.md の書き分け
 
-グローバルは共通骨格だけ。各PJの `CLAUDE.md` には**そのPJ固有のことだけ**を書く：
-
-- **固有の前提・目的・最大のリスク**（何のPJか、スコープ膨張など気をつけること）
-- **REQUIREMENTS.md の中身の性質**（機能仕様か調査スコープか）／`notes/` 等の独自慣習
-- **Git**：リモートURL、worktree の配置先、ブランチ戦略、コミット規約の差分、**push のオプトアウトが要るか**（既定は自動 push。止めるなら §5 の明示）。§5.1・§5.2 は全PJ共通に定義済みなので差分のみ書く
-- **技術スタック・スキル化方針・ドキュメント規約**など固有ルール
+グローバルは共通骨格だけ。PJ側には**そのPJ固有の差分だけ**を書く（書く項目は `/init-rules` の雛形に従う）。§5.1・§5.2 は全PJ共通に定義済みなので差分のみ書く。
 
 ## 8. 外部に出す文面に Markdown を使わない
 

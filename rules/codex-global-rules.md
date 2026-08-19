@@ -32,7 +32,7 @@
 - 開始時は `AGENTS.md` と `PROGRESS.md` を読み、checkpoint は必要時だけ読む。
 - `AGENTS.md` にセッション履歴を追記しない。
 - ADR が10件を超えたら `docs/adr/` への分離を検討する。
-- 既定上限はグローバル `AGENTS.md` 14KB、PJ `AGENTS.md` 6KB、`PROGRESS.md` 60行。超過を見つけたら意味を失わず圧縮する提案を行う。
+- 既定上限はグローバル `AGENTS.md` 14,336B、PJ `AGENTS.md` 6,144B、`PROGRESS.md` 60行かつ 12,288B。PJ ルートで `~/.codex/tools/check-limits.sh` を実行して判定し、超過は意味を失わず圧縮する提案を行う。
 
 ## 3. 進行ルール
 
@@ -64,7 +64,7 @@
 - push は既定で自動。リモートがあるリポは commit に続けて事前承認なしで push する。PJの `AGENTS.md` が「push はユーザー指示時のみ」と明示した場合だけ止める。
 - force push、履歴改変、`reset --hard` は事前確認必須。
 - 公開リポでは必要に応じて GitHub noreply メールを使う。
-- 業務・共有リポは元cloneや main/developを直接編集せず、PJ指定場所の worktree と作業ブランチを使い、終了後に片付ける。低リスク個人リポで直編集を明示した場合は例外。
+- 業務・共有リポは元cloneや main/developを直接編集せず、PJ指定場所の worktree と作業ブランチを使い、終了後に worktree を片付け、元 clone も `git pull --ff-only` で最新化する。低リスク個人リポで直編集を明示した場合は例外。
 - コミット subject は日本語50字目安。body に「何を・なぜ・どう・影響範囲」を書く。PJ既存規約を優先する。
 - コミットやPRに内部スキル名を作業手段として書かない。公開OSSの quorum / cadence / claude-rules と、そのリポ自体の主題となるツール名は可。
 - 業務・共有リポでは Codex / OpenAI / AI生成を示す署名・宣伝行を付けない。
