@@ -18,9 +18,13 @@ for arg in "$@"; do
   case "$arg" in
     --no-codex) INSTALL_CODEX=0 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "不明な引数: $arg" >&2; exit 2 ;;
+    *) echo "不明な引数: $arg（使えるのは --no-codex）" >&2; exit 2 ;;
   esac
 done
+case "$INSTALL_CODEX" in
+  0|false|no|'') INSTALL_CODEX=0 ;;
+  *) INSTALL_CODEX=1 ;;
+esac
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -93,18 +97,31 @@ else
 fi
 echo "  - CLAUDE.md に claude-rules ブロックを反映"
 
-if [ "$INSTALL_CODEX" != 1 ]; then
-  :
-elif [ -f "$CODEX_TARGET_MD" ] && grep -q 'codex-rules:begin' "$CODEX_TARGET_MD"; then
-  awk -v rules="$CODEX_RULES_FILE" '
-    /codex-rules:begin/ {skip=1; while ((getline line < rules) > 0) print line; close(rules); next}
-    /codex-rules:end/   {skip=0; next}
-    !skip {print}
-  ' "$CODEX_TARGET_MD" > "$CODEX_TARGET_MD.tmp" && mv "$CODEX_TARGET_MD.tmp" "$CODEX_TARGET_MD"
+if [ "$INSTALL_CODEX" = 1 ]; then
+  if [ -f "$CODEX_TARGET_MD" ] && grep -q 'codex-rules:begin' "$CODEX_TARGET_MD"; then
+    awk -v rules="$CODEX_RULES_FILE" '
+      /codex-rules:begin/ {skip=1; while ((getline line < rules) > 0) print line; close(rules); next}
+      /codex-rules:end/   {skip=0; next}
+      !skip {print}
+    ' "$CODEX_TARGET_MD" > "$CODEX_TARGET_MD.tmp" && mv "$CODEX_TARGET_MD.tmp" "$CODEX_TARGET_MD"
+  else
+    { [ -s "$CODEX_TARGET_MD" ] && echo ""; cat "$CODEX_RULES_FILE"; } >> "$CODEX_TARGET_MD"
+  fi
+  echo "  - Codex AGENTS.md に codex-rules ブロックを反映"
 else
-  { [ -s "$CODEX_TARGET_MD" ] && echo ""; cat "$CODEX_RULES_FILE"; } >> "$CODEX_TARGET_MD"
+  # 既存の配置は**自動で消さない**（env 1つでユーザーのファイルを削るのは危険）。
+  # 残っていることと、消す手順だけを知らせる。
+  for leftover in "$CODEX_HOME/skills/init-rules" "$CODEX_HOME/skills/triage" \
+                  "$CODEX_HOME/hooks/codex-triage" "$CODEX_HOME/tools/check-limits.sh"; do
+    if [ -e "$leftover" ]; then
+      echo "※ Codex版はスキップしました。前回の配置が残っています: $leftover" >&2
+      echo "   不要なら: rm -rf \"$leftover\"" >&2
+    fi
+  done
+  if [ -f "$CODEX_TARGET_MD" ] && grep -q 'codex-rules:begin' "$CODEX_TARGET_MD"; then
+    echo "※ $CODEX_TARGET_MD に codex-rules ブロックが残っています（マーカー間を手で削除してください）" >&2
+  fi
 fi
-if [ "$INSTALL_CODEX" = 1 ]; then echo "  - Codex AGENTS.md に codex-rules ブロックを反映"; fi
 
 # 数値上限の目安チェック（グローバル §2。超過しても失敗にはしない）
 echo ""
@@ -121,7 +138,7 @@ if [ "$INSTALL_CODEX" = 1 ]; then
   echo "  - $CODEX_HOME/skills/triage（自然言語での明示トリアージ）"
   echo "  - $CODEX_HOME/hooks/codex-triage（初回プロンプト分類ラッパー）"
 else
-  echo "  - Codex 側はスキップ（--no-codex）"
+  echo "  - Codex 側はスキップ（CLAUDE_RULES_INSTALL_CODEX=0 / --no-codex）"
 fi
 echo ""
 echo "Claude Code を再起動するか /reload-skills を実行してください。"

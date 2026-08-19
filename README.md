@@ -36,7 +36,7 @@ cd claude-rules && ./install.sh
 | `install.sh` | 上記を両環境へ配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に `tools/check-limits.sh` で上限を目安チェック。`--no-codex` で Codex 側の配置を省ける |
 
 `install.sh` は両方を既定で配置する。配置先は `CLAUDE_CONFIG_DIR` / `CODEX_HOME` で変更でき、再実行は冪等。
-Codex をメインエージェントに使わないPCでは `./install.sh --no-codex`（または `CLAUDE_RULES_INSTALL_CODEX=0`）で Codex 側の配置を丸ごと省ける。`AGENTS.md` は quorum / cadence も注入するため、それらを止めない限りファイル自体は残る（省けるのは claude-rules 分だけ）。
+Codex をメインエージェントに使わないPCでは `./install.sh --no-codex`（または `CLAUDE_RULES_INSTALL_CODEX=0`）で Codex 側の配置を丸ごと省ける。**quorum は `--no-codex` / `QUORUM_INSTALL_CODEX=0`、cadence は `--no-codex` / `CADENCE_INSTALL_CODEX=0` と同じ口を持つ**ので、`AGENTS.md` 自体を作らせないには3リポとも付けて実行する。既存の配置は**自動では消さない**（残っていれば消す手順を stderr に表示する）。
 CLIのインストール有無ではスキップしない。新PCへの設定の事前配布を可能にするため、Claude CodeまたはCodexが未導入でも対応する設定ディレクトリを作成する。
 
 Codex 0.144.1 の安定版hooksには、Claude Codeの `UserPromptSubmit` に相当する各ターンイベントがない。そのためCodex版は初回プロンプトだけを分類する明示的な起動ラッパーとしている。
