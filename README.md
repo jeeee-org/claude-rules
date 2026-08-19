@@ -60,3 +60,9 @@ Codex 0.144.1 の安定版hooksには、Claude Codeの `UserPromptSubmit` に相
 
 - 2026-06-17: グローバル `~/.claude/CLAUDE.md` と `/init-rules` を作成（当初は版管理外）
 - 2026-07-10: Hermes Agent 調査の応用でルール3点を追加（常時ロード数値上限／スキル化の前向き自問／スキル diff 承認・使用後自己改善）したのを機に、本リポへ切り出して配布可能化
+- 2026-08-19: **業務PC（GitHub へ push 不可・subtree の pull-only mirror）から届いた改善メモ3件を反映**し、双方向の同期経路を整備した。
+  - **ルール本体**（`956bf8b`）: §5.1 の worktree の終い方に元 clone の `git pull --ff-only` を追加（Claude / Codex 両方）／§2 の上限を `14KB` 表記から `14,336B` へ改め PROGRESS.md に総バイト 12,288B を追加／§4・§7 を圧縮。差し引き −770B でグローバル CLAUDE.md は 14,238B → 13,468B。**見出し番号は据え置いた**——`§5.1` は各PJの `CLAUDE.md` から参照されており、詰めると他PCの参照が黙って壊れる。
+  - **上限判定の一本化**（`f6395d6` / `b60ba39`）: `tools/check-limits.sh` を新設し、install 時のグローバル2ファイルだけだった検査を **PJ の CLAUDE.md 6,144B と PROGRESS.md（行数・総バイト）まで**広げた。上限は `CR_LIMIT_*` か PJ の `.claude/limits.env` で上書きできる（§2 の「PJ の CLAUDE.md で上書き可」の機械可読版）。
+  - **Codex 配置の任意化**（`f6395d6` / `8d5d4ff`）: `--no-codex` / `CLAUDE_RULES_INSTALL_CODEX=0` を追加。`AGENTS.md` は3リポとも注入するため、cadence にも同じ口を入れた（cadence `ec06314`。quorum は実装済みだった）。スキップは「配置しない」であって「消す」ではないので、残置物は自動削除せず消す手順を案内する（quorum の判断に合わせた）。
+  - **状態採取**（`f716e6f`）: `tools/collect-state.sh` を新設。push できないPCで実行して出力を貼るだけで、正本のハッシュ・正本と生成物のドリフト diff・ブロック構成・配置物が1回で分かる。subtree 配下でも動き、`$HOME` は伏せ、`settings.json` は登録件数しか出さない。
+  - この往復で判明したこと: 業務PCのリポ本体は13ファイル全ハッシュ一致で、**ズレていたのは生成物だけ**（install 未実行）。懸案だった約50B の差は手当ての実測 +87B で説明でき、**quorum / cadence のブロックは 3,206B で完全一致＝版ズレ無し**だった。
