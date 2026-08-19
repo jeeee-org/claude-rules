@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # 常時ロードされるファイルのサイズ上限を機械判定する（グローバル §2）。
 #   check-limits.sh [PJルート]     省略時はカレントディレクトリ
-# 上限は 1024 系。PJ ごとに環境変数で上書きできる:
+# 上限は 1024 系。環境変数か PJ の .claude/limits.env で上書きできる:
 #   CR_LIMIT_GLOBAL=14336 CR_LIMIT_PJ=6144 CR_LIMIT_PROGRESS_BYTES=12288 CR_LIMIT_PROGRESS_LINES=60
 # 超過が1件でもあれば exit 1。
 set -uo pipefail
 
 PJ="${1:-$PWD}"
+# PJ ごとの上限上書き（グローバル §2「PJ の CLAUDE.md で上書き可」の機械可読版）。
+# 例: echo 'CR_LIMIT_PJ=9216' > .claude/limits.env
+[ -f "$PJ/.claude/limits.env" ] && . "$PJ/.claude/limits.env"
 CC="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CX="${CODEX_HOME:-$HOME/.codex}"
 G="${CR_LIMIT_GLOBAL:-14336}"

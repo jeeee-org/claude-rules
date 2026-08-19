@@ -79,7 +79,8 @@ for d in "$CC/skills" "$CC/hooks" "$CX/skills" "$CX/hooks"; do
 done
 
 echo "### hook-enabled  triage-classifier の settings.json 登録（件数のみ）"
-echo "  $(grep -c 'triage-classifier' "$CC/settings.json" 2>/dev/null || echo 0)"
+n=$(grep -c 'triage-classifier' "$CC/settings.json" 2>/dev/null) || true
+echo "  ${n:-0}"
 
 echo "### pj-limits  カレントPJの常時ロードファイル（グローバル §2 の上限確認）"
 for f in CLAUDE.md AGENTS.md PROGRESS.md; do

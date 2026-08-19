@@ -31,7 +31,7 @@ cd claude-rules && ./install.sh
 | `hooks/triage-classifier.sh` | **正本**。UserPromptSubmit フック：プロンプトを haiku がヘッドレス分類（T0/T1/T2a/CADENCE）し、T0 以外のときだけ判定をコンテキスト注入する。quorum/cadence トリアージの発動漏れ対策（判断をメインモデルの自己申告から独立させる）。`~/.claude/hooks/` へコピーされ、settings.json への登録は **opt-in**（install.sh が案内を表示。+2〜6秒/プロンプト） |
 | `hooks/triage-rubric.txt` | **分類基準の唯一の正本**。Claudeフック、Codexラッパー、Codex `triage` スキルで共有 |
 | `hooks/codex-triage.sh` | Codexの初回プロンプトを `gpt-5.4-mini` で分類する起動ラッパー。`~/.codex/hooks/codex-triage` へ配置 |
-| `tools/check-limits.sh` | **正本**。常時ロードされるファイルのサイズ上限（グローバル §2）を機械判定する。グローバル CLAUDE.md / AGENTS.md に加え、**PJ の CLAUDE.md 6,144B と PROGRESS.md の 60行かつ 12,288B も見る**。`~/.claude/tools/` `~/.codex/tools/` へコピーされ、`install.sh` 末尾と §2 の両方から呼ばれる。上限は `CR_LIMIT_*` 環境変数でPJごとに上書き可 |
+| `tools/check-limits.sh` | **正本**。常時ロードされるファイルのサイズ上限（グローバル §2）を機械判定する。グローバル CLAUDE.md / AGENTS.md に加え、**PJ の CLAUDE.md 6,144B と PROGRESS.md の 60行かつ 12,288B も見る**。`~/.claude/tools/` `~/.codex/tools/` へコピーされ、`install.sh` 末尾と §2 の両方から呼ばれる。上限は `CR_LIMIT_*` 環境変数か、PJ の `.claude/limits.env` で上書き可（グローバル §2「PJ の CLAUDE.md で上書き可」の機械可読版） |
 | `tools/collect-state.sh` | 複数PC間のズレを採取する。正本のハッシュ・正本と生成物のドリフト diff・ブロック構成・配置物一覧を1回で出す。**push 権限の無いPCで実行して出力を貼る**用途。subtree 配下でも動く |
 | `install.sh` | 上記を両環境へ配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に `tools/check-limits.sh` で上限を目安チェック。`--no-codex` で Codex 側の配置を省ける |
 
