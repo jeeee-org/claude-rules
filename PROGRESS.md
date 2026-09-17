@@ -10,7 +10,7 @@
 
 ## 次の一手 (Top 3)
 > REQUIREMENTS.md のバックログから直近の分だけを取り出す。
-1. 他PCで両リポ（claude-rules・quorum）を最新化して`./install.sh`。**claude-rulesは2026-09-17に履歴を畳んだので`git fetch && git reset --hard origin/main`**（`git pull`では進まない）。`settings.json`に分類フックが登録済みなら手で外す
+1. 他PCでclaude-rulesの**cloneを取り直す**（2026-09-17に履歴を畳みリポを作り直したため。`git pull`は進まず、`reset --hard`では畳む前の版がそのPCに残る）。**消す前に`IMPROVEMENTS.md`への未pushの追記が無いか見る**（追記はclone内の正本に入る）。取り直したら`./install.sh`（symlinkの張り直しに必須）。quorumは`git pull && ./install.sh`。`settings.json`に分類フックが登録済みなら手で外す
 2. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ。置き場だけ揃ったタスクは改名だけの入口で回る）
 3. （余裕があれば）Codex側ルールの圧縮
 
