@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""文書を分けて移した後、元の文書の各行が移動先のどれかに残っているかを確かめる。
+
+既存PJを新しい記録ルールへ移す時に使う（NOTES.mdの一回限りの記録をcheckpointへ原文のまま移し、
+残す節だけ書き直す、など）。本文を1行ずつ突き合わせ、どこにも無い行を出す。
+出た行が「意図して書き直した・置き換えた行」だけなら、移し漏れは無い。
+
+  check-moved-lines.py --from SOURCE TARGET...
+      SOURCEは元の文書。ファイルのパスか、gitの版REV:PATH（例：HEAD:NOTES.md）。
+      版を指せば、書き換える前の退避が要らない
+      TARGETは移動先の候補（新しいNOTES.md・REQUIREMENTS.md・checkpoints/*.mdなど）
+  オプション
+      --repo DIR          REV:PATHを読むリポ（既定はカレント）
+      --strict-headings   見出しの「#」の数まで一致を求める（既定は、段を下げて貼った見出しを同じとみなす）
+
+比較は行頭と行末の空白を落とした完全一致（字下げを外して、または変えて移した行も同じとみなす）。
+空行と、区切りだけの行（--- や |---|---|）は数えない。
+exitは0=全行が残っている / 1=残っていない行がある / 2=読めない等で中止。
+"""
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HEADING_RE = re.compile(r'^#{1,6}\s+')
+# 水平線と、表の区切り行（| --- | :-: |）
+SEPARATOR_RE = re.compile(r'^\s*(-{3,}|\*{3,}|_{3,}|\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{0,}:?\s*)\s*$')
+
+
+class Abort(Exception):
+    pass
+
+
+def read_source(spec, repo):
+    path = Path(spec)
+    if path.is_file():
+        return path.read_text(encoding='utf-8')
+    if ':' in spec:
+        rev, rel = spec.split(':', 1)
+        r = subprocess.run(['git', '-C', str(repo), '-c', 'core.quotepath=false', 'show', f'{rev}:{rel}'],
+                           capture_output=True)
+        if r.returncode != 0:
+            raise Abort(f'{spec}をgitから読めない: {r.stderr.decode("utf-8", "replace").strip()}')
+        return r.stdout.decode('utf-8')
+    raise Abort(f'{spec}が無い')
+
+
+def key(line, strict_headings):
+    # 箇条書きの続きの行は、移す先で字下げが変わることが多い（voice-inputの移行で3行が「無い」と出た）
+    line = line.strip()
+    if not strict_headings and HEADING_RE.match(line):
+        return 'H:' + HEADING_RE.sub('', line, count=1)
+    return line
+
+
+def counted(line):
+    return line.strip() != '' and not SEPARATOR_RE.match(line)
+
+
+def missing_lines(source_text, target_texts, strict_headings=False):
+    haystack = {key(l, strict_headings) for t in target_texts for l in t.splitlines()}
+    return [(n, l) for n, l in enumerate(source_text.splitlines(), 1)
+            if counted(l) and key(l, strict_headings) not in haystack]
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    ap.add_argument('--from', dest='source', required=True)
+    ap.add_argument('--repo', default='.')
+    ap.add_argument('--strict-headings', action='store_true')
+    ap.add_argument('targets', nargs='+')
+    a = ap.parse_args(argv)
+    try:
+        source = read_source(a.source, Path(a.repo))
+        texts = []
+        for t in a.targets:
+            p = Path(t)
+            if not p.is_file():
+                raise Abort(f'移動先{t}が無い')
+            texts.append(p.read_text(encoding='utf-8'))
+    except Abort as e:
+        print(f'中止: {e}', file=sys.stderr)
+        return 2
+    total = sum(1 for l in source.splitlines() if counted(l))
+    missing = missing_lines(source, texts, a.strict_headings)
+    for n, line in missing:
+        print(f'{n:5d}: {line}')
+    print(f'元の{total}行のうち、移動先のどこにも無い行{len(missing)}行', file=sys.stderr)
+    return 1 if missing else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

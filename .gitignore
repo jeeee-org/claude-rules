@@ -1,0 +1,2 @@
+# Python のテスト実行で生成されるキャッシュ（tools/tests/）
+__pycache__/
