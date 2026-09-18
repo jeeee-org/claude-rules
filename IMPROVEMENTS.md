@@ -150,3 +150,4 @@
 - **状況**: 同じ移行で`migrate-checkpoints.py apply --repo tasks/<name>`を実行し、`git add -A tasks/<name>`でコミットした。
 - **気づき**: **道具はPJの外から改名対象を指すリンクも正しく張り替える**（モノレポのルートの`PROGRESS.md`、別タスクのcheckpointなど3ファイル）。`--repo`はPJの中だけを見ると読めるが、**参照の張り替えはリポ全体に及ぶ**（それが正しい）。PJ配下だけをステージすると張り替えが未コミットで残り、次の`rebase`が「unstaged changes」で止まって初めて気づく。
 - **改善案**: (a) SKILL.md手順2の4のコミット手順に「**PJの外の参照も張り替わるので`git status`をリポルートで見てからステージする**」の1行 (b) `apply`の最後に、PJの外で変更したファイルを一覧で出す。
+- **反映（2026-09-18）**: (a)(b)とも実装。書き換え一覧でPJの外のものに「（PJの外）」を付け、最後に一覧と「リポルートで`git status`を見てからステージする」をstderrへ出す（PJの中だけで済んだ時は黙る）。判定は既存の`ctx.under()`。テスト1件追加。⇒ [反映済み → tools/migrate-checkpoints.py cmd_apply・skills/migrate-rules/SKILL.md 手順2]
