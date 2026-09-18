@@ -35,6 +35,18 @@ print(d if isinstance(d,str) else "")' "$1" <<<"$input" 2>/dev/null
   fi
 }
 
+# 入口のフックが呼ばれているか。呼ばれていなければ、関門は配線されていない
+seen_note() {
+  local f="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.record-guard-seen" t now
+  if [ ! -r "$f" ]; then
+    echo "※ 入口のフックは一度も呼ばれていません。登録を確かめてください（install.sh）。"
+    return
+  fi
+  t=$(cat "$f" 2>/dev/null); now=$(date +%s)
+  case "$t" in ''|*[!0-9]*) return ;; esac
+  echo "※ 入口のフックが最後に呼ばれたのは $(( (now - t) / 60 ))分前です。"
+}
+
 [ "$(read_json '.tool_name')" = "Bash" ] || exit 0
 cmd=$(read_json '.tool_input.command')
 [ -n "$cmd" ] || exit 0
@@ -81,7 +93,9 @@ while IFS= read -r d; do
 入口のフックは、書き込みとcommitが同じ呼び出しにある形では判定できません。
 記録（checkpoint / PROGRESS.md / REQUIREMENTS.md / NOTES.md）を書いて、
 次のcommitで入れてください。直前のcommitへまとめるなら --amend を使えます。
-記録が要らない作業だった場合は、その理由を1行述べてください。
+記録が要らない作業だった場合は、コミットメッセージに「記録なし: <理由>」を残してください
+（pushの関門はこのトレーラを例外として通します）。
+$(seen_note)
 MSG
   exit 2
 done < <(printf '%s\n' "$candidates")

@@ -19,7 +19,9 @@
 #  - 止めた時は**コマンド全体が実行されない**。差し戻しの文面でそれを必ず言う
 #    （準備まで済んだと誤解すると、次のcommitが空振りする）。
 # 登録はclaude-rules/install.shが行う（~/.claude/settings.json のPreToolUse）。
-# 見逃しの後追いは hooks/commit-record-audit.sh（PostToolUse）。
+# **本丸は hooks/push-record-guard.sh**（pushの直前なら、commitが既にあるので正確に判定でき、
+# しかも止められる）。ここは早く気づくための入口で、見逃しの後追いは
+# hooks/commit-record-audit.sh（PostToolUse）。三段でひと組。
 # 効いているかは tools/check-record-guard.sh で、**作業するリポごとに**確かめる。
 set -u
 
@@ -82,6 +84,9 @@ strip_heredoc_bodies() {
 }
 
 [ "$(read_json '.tool_name')" = "Bash" ] || exit 0
+# 呼ばれた印。配線が生きているかを、手で試さなくても観測値として読めるようにする
+{ date +%s > "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.record-guard-seen"; } 2>/dev/null || true
+
 cmd=$(read_json '.tool_input.command')
 [ -n "$cmd" ] || exit 0
 

@@ -21,6 +21,5 @@
 - `rules/codex-global-rules.md`の圧縮（残量3,795Bで急がない。Claude側と同じ観点で他所と重複する語を畳む）。
 
 ## 未決事項
-- [ ] 関門の確実さが運用（編集とcommitを別の呼び出しに分ける）に依存している。入口は呼び出しの形に弱く、後追いは止められない。「登録した＝効いている」と言える形にできるか。
 - [ ] 常時トリアージ規則を廃止した今、`hooks/triage-classifier.sh`・`hooks/triage-rubric.txt`・`skills/codex-triage/`（opt-inの分類ツール）を配布し続けるか。
 - [ ] `migrate-rules`のCodex版を作るか（2026-09-14にClaude版だけ作った。Codexをメインに使うPJで同じ移行の需要があるか未確認）。
