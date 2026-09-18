@@ -114,6 +114,40 @@ class CheckMovedLinesTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertEqual(r.stdout.strip(), '3: - 消える行')
 
+    def test_mono_source_is_resolved_from_repo_not_git_root(self):
+        """モノレポのタスクで走らせた時、ルート直下の同名ファイルと比べない"""
+        repo = self.root / 'mono'
+        repo.mkdir()
+
+        def git(*args):
+            subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True)
+
+        git('init', '-q', '-b', 'main')
+        git('config', 'user.email', 'test@example.com')
+        git('config', 'user.name', 'test')
+        (repo / 'REQUIREMENTS.md').write_text('# 本体\n- 本体だけの行\n', encoding='utf-8')
+        (repo / 'tasks/x').mkdir(parents=True)
+        (repo / 'tasks/x/REQUIREMENTS.md').write_text('# タスク\n- 移す行\n', encoding='utf-8')
+        git('add', '-A')
+        git('commit', '-q', '-m', 'fixture')
+        moved = self.write('moved.md', '# タスク\n- 移す行\n')
+
+        r = self.tool('--from', 'HEAD:REQUIREMENTS.md', '--repo', str(repo / 'tasks/x'), moved)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)      # タスク側と比べている
+        self.assertIn('比較元: HEAD:tasks/x/REQUIREMENTS.md', r.stderr)
+        self.assertNotIn('本体だけの行', r.stdout)
+
+        # リポルートを指せば本体側。どちらを読んだかは「比較元」で分かる
+        r = self.tool('--from', 'HEAD:REQUIREMENTS.md', '--repo', str(repo), moved)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('比較元: HEAD:REQUIREMENTS.md', r.stderr)
+        self.assertIn('本体だけの行', r.stdout)
+
+    def test_shows_the_plain_file_it_compared(self):
+        src = self.write('old.md', SOURCE)
+        r = self.tool('--from', src, src)
+        self.assertIn(f'比較元: {src}', r.stderr)
+
     def test_aborts_on_unreadable_source_or_target(self):
         src = self.write('old.md', SOURCE)
         r = self.tool('--from', str(self.root / 'nothing.md'), src)

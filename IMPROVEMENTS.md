@@ -139,3 +139,14 @@
 - **改善案**: (a) `REQUIREMENTS.md`に「進行中の作業」節を置き、**1作業1カード**（何をする／叶っている状態／現在地／待ち／作業ログ）で形を固定する。現在地は**上書きし履歴を積まない**。終わったらカードを消して`PROGRESS.md`の完了へ1行＋checkpointリンク。(b) 作業を頼まれたらまずカードを立ててから動く（その場で終わる用事は除く）。(c) checkpointを`YYYY-MM-DD-作業名-中身.md`とし、作業名をカードの見出しと同じ語にする。Claude / Codex 両方のルールと両方の`init-rules`の雛形へ。
 - **反映（2026-09-18）**: 提案どおり4ファイルへ反映。加えて提案に含まれていなかった2箇所——両方の`init-rules`が雛形の説明文で古いファイル名の書式を指していたぶん——も同じ書式へ直した。グローバルは10,204→11,548B（残り2,788B）、Codex側は9,271→10,614B（残り3,722B）。⇒ [反映済み → rules/global-rules.md §1・§2・§3・§4、rules/codex-global-rules.md §1・§2・§3・§4、skills/init-rules/SKILL.md 手順3、skills/codex-init-rules/SKILL.md 手順3]
   - **積み残し**: `tools/migrate-checkpoints.py`とREADMEの説明は`YYYY-MM-DD-作業内容.md`のまま。改名の対応表は人が埋めるので道具は動くが、**候補名の出し方と文言が古い書式を指している**。既存PJの移行（`migrate-rules`）にもカードの新設が入っていない。`REQUIREMENTS.md`の未決事項に上げた。
+
+## 2026-09-18 — `check-moved-lines.py`の`--from HEAD:<file>`がモノレポで別のファイルを読む
+- **状況**: モノレポのタスク1つで`/migrate-rules`の手順7を実行した。`tasks/<name>/`で`python3 check-moved-lines.py --from HEAD:REQUIREMENTS.md ...`を走らせた。
+- **気づき**: `HEAD:<file>`はgitのルートからの相対で解決されるので、**リポルート直下の同名ファイルと比べてしまう**。まったく関係ない差分が大量に出て、一見「30行近く落ちた」ように見える。`--from "HEAD:tasks/<name>/REQUIREMENTS.md"`と書けば通る。**SKILL.mdの手順7のコマンド例がPJルート＝gitルートを前提にしている**（`migrate-checkpoints.py`は`--repo`で解決済みなのに、こちらだけ残っていた）。
+- **改善案**: (a) 手順7のコマンド例を`--from "HEAD:<PJのリポ相対パス>/<file>"`の形にする (b) `check-moved-lines.py`に`--repo`を足し、`--from`のパスをそこから解決する (c) 出力の冒頭に「比較元: <解決したパス>」を出す。取り違えは差分を見るまで気づけない。
+- **反映（2026-09-18）**: (b)(c)を実装。`REV:PATH`に`./`を付けて`--repo`からの相対として解決し、読んだ場所を`比較元: HEAD:tasks/x/REQUIREMENTS.md`の形で常に出す。**(a)は採らなかった**——(b)が入れば、PJのディレクトリで実行するかぎり既存のコマンド例がそのまま正しく動く。例文をリポ相対に直すと普通のPJで冗長になり、かえって間違えやすい。スキルの手順4・7には「冒頭の比較元を必ず見る」を足した。テスト2件追加。⇒ [反映済み → tools/check-moved-lines.py・skills/migrate-rules/SKILL.md 手順4・手順7]
+
+## 2026-09-18 — 改名がPJの外の参照も張り替えるので、PJ配下だけのステージでは漏れる
+- **状況**: 同じ移行で`migrate-checkpoints.py apply --repo tasks/<name>`を実行し、`git add -A tasks/<name>`でコミットした。
+- **気づき**: **道具はPJの外から改名対象を指すリンクも正しく張り替える**（モノレポのルートの`PROGRESS.md`、別タスクのcheckpointなど3ファイル）。`--repo`はPJの中だけを見ると読めるが、**参照の張り替えはリポ全体に及ぶ**（それが正しい）。PJ配下だけをステージすると張り替えが未コミットで残り、次の`rebase`が「unstaged changes」で止まって初めて気づく。
+- **改善案**: (a) SKILL.md手順2の4のコミット手順に「**PJの外の参照も張り替わるので`git status`をリポルートで見てからステージする**」の1行 (b) `apply`の最後に、PJの外で変更したファイルを一覧で出す。

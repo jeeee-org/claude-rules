@@ -308,8 +308,16 @@ def cmd_apply(ctx, left, names_path, allow_dirty):
         except OSError:
             pass
     print(f'{"改名" if ctx.rename_only else "移動"} {len(moves)}件/書き換え{len(edited)}ファイル')
+    outside = [f for f in edited if not ctx.under(f)]
     for f in edited:
-        print(f'  書き換え: {f}')
+        print(f'  書き換え: {f}' + ('（PJの外）' if f in outside else ''))
+    if outside:
+        # 移すPJを指す参照はリポ全体にある（別PJのcheckpoint・ルートのPROGRESS.mdなど）。
+        # PJ配下だけをステージすると張り替えが未コミットで残り、次のrebaseまで気づけない
+        print(f'※ PJの外の{len(outside)}ファイルも張り替えた。リポルートでgit statusを見てからステージする:',
+              file=sys.stderr)
+        for f in outside:
+            print(f'   {f}', file=sys.stderr)
     if done:
         print(f'改名済みなので触らなかった: {len(done)}件', file=sys.stderr)
     for p in others:

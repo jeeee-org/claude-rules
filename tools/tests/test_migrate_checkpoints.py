@@ -316,6 +316,16 @@ class MonorepoTest(MigrateCheckpointsTest):
         self.assertNotIn('PROGRESS.md', c.stdout)
         self.assertIn('tasks/x/NOTES.md:3:', c.stdout)   # タスク自身の置き場の言及は「確かめる」に出す
 
+    def test_mono_apply_lists_the_files_it_rewrote_outside_the_project(self):
+        """PJの外の参照も張り替わる。ステージし損ねないよう一覧で出す"""
+        self.write_names({'2026-07-13': 'タスク'})
+        r = self.tool_at('tasks/x', 'apply', '--names', str(self.names_file))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('PJの外の1ファイルも張り替えた', r.stderr)
+        self.assertIn('   README.md', r.stderr)
+        self.assertIn('README.md（PJの外）', r.stdout)
+        self.assertNotIn('tasks/x/NOTES.md（PJの外）', r.stdout)
+
     def test_mono_repo_outside_git_is_refused(self):
         r = subprocess.run([sys.executable, str(TOOL), 'plan', '--repo', str(self.repo / 'no-such-dir')],
                            capture_output=True, text=True)

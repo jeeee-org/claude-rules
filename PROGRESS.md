@@ -15,6 +15,7 @@
 3. （余裕があれば）Codex側ルールの圧縮
 
 ## 完了
+- [x] 2026-09-18 突き合わせの比較元を`--repo`から解決するようにし、何と比べたかを毎回出すようにした（モノレポでルート直下の同名ファイルと比べていた。他PCからの改善案）→ [checkpoint](checkpoints/2026-09-18-突き合わせの比較元-モノレポでの取り違え.md)
 - [x] 2026-09-18 commit時に記録の4点が入っているかを見るフックを追加し、`settings.json`へ既定で登録（止めて差し戻す／理由を述べれば通せる）→ [checkpoint](checkpoints/2026-09-18-記録の関門-コミット時のフック.md)
 - [x] 2026-09-18 カード導入と新しい命名を移行側（移行コマンド・`migrate-rules`・READMEの説明）へ波及。既存PJを揃えるとカードが立ち、checkpointが新しい書式になる → [checkpoint](checkpoints/2026-09-18-移行側の追従-命名とカードの波及.md)
 - [x] 2026-09-18 依頼された作業を`REQUIREMENTS.md`の「進行中の作業」カードで持つ形にし、checkpointの名前を`YYYY-MM-DD-作業名-中身.md`へ（他PCからの改善案。Claude / Codex 両方のルールと両方の`init-rules`）→ [checkpoint](checkpoints/2026-09-18-作業カード-ルールとスキルへの導入.md)

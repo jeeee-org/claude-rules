@@ -62,7 +62,7 @@ python3 "$clone/tools/check-moved-lines.py" --help
 3. `apply --names <scratchpad>/names.tsv` → 最後に`check`が走る。問題があれば直してから進む。
    - **リンク切れが出たら、それは道具を通さずに動かした分**（`apply`は移動で1段浅くなるぶんの外向きリンクを、旧い位置で解決して張り直す）。旧い位置に戻して解決し直し、新しい位置から張り直す。`PROGRESS.md`や他の文書が古い名前を指したまま残っていれば「改名前の名前のまま残っている」として出る。
    - 「確かめる」に出た旧ディレクトリへの言及（READMEの表の文字列、`.gitignore`のコメントなど）も1件ずつ見て、説明として残すもの以外は直す。ディレクトリへのリンク先は`apply`が張り直すが、表示の文字列やMarkdown以外のファイルは直さない。
-4. コミットする。
+4. コミットする。**`git status`はリポルートで見る**——PJの外から改名対象を指していた参照（ルートの`PROGRESS.md`、別タスクのcheckpointなど）も張り替わるので、PJ配下だけをステージすると未コミットで残り、次の`rebase`が「unstaged changes」で止まるまで気づけない。`apply`が「PJの外のNファイルも張り替えた」と一覧で出すので、それをステージに入れる。
 
 ## 3. 決定と未決をREQUIREMENTS.mdへ
 
@@ -104,6 +104,9 @@ python3 "$clone/tools/check-moved-lines.py" --help
   ```bash
   python3 "$clone/tools/check-moved-lines.py" --from HEAD:NOTES.md NOTES.md REQUIREMENTS.md checkpoints/*.md
   ```
+  - **出力の冒頭の「比較元」を必ず見る。** `HEAD:<file>`は`--repo`（既定はカレント）から解決するので、
+    モノレポのタスクで走らせる時は、そのPJのディレクトリで実行するか`--repo`を渡す。取り違えると
+    関係の無い差分が大量に出て、一見「何十行も落ちた」ように見える。
   - 出た行が「書き直した・置き換えた・言い換えて移した」行だけであることを、1行ずつ確かめる。
   - 本文の脱落があれば戻す。書き直しで落ちた細部（「再起動済み」のような一言）も戻す。
 
@@ -135,6 +138,7 @@ python3 "$clone/tools/check-moved-lines.py" --help
   python3 "$clone/tools/check-moved-lines.py" --from HEAD:PROGRESS.md PROGRESS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
   python3 "$clone/tools/check-moved-lines.py" --from HEAD:CLAUDE.md CLAUDE.md REQUIREMENTS.md NOTES.md checkpoints/*.md
   ```
+  - ここでも**冒頭の「比較元」**が、意図したファイルを指しているか見る（手順4と同じ）。
   - `CLAUDE.md`で出た行は、「グローバルと同じ内容だから消した」と「グローバルと違う値・強さ・例外だった」を1行ずつ分ける。後者は戻す（手順6）。
 - **上限**：`~/.claude/tools/check-limits.sh`。
 - **memory**：ユーザーが削除を選んだ場合だけ消す（リポの外なのでコミットは不要）。
