@@ -257,8 +257,8 @@ else
   echo "  - Codex 側はスキップ（CLAUDE_RULES_INSTALL_CODEX=0 / --no-codex）"
 fi
 echo ""
-echo "記録の関門が**このセッションで**効くかは、登録だけでは決まりません（発火しない例があります）。"
-echo "導入したら1回確かめてください: $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh"
+echo "記録の関門は、登録しても発火するとは限りません（**リポ単位で割れる例**があり、条件は未特定）。"
+echo "**作業するリポで**確かめてください: $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh --repo <リポ>"
 echo ""
 echo "Claude Code を再起動するか /reload-skills を実行してください。"
 if [ "$INSTALL_CODEX" = 1 ]; then echo "Codex分類を使う場合: $CODEX_HOME/hooks/codex-triage [codex options] -- '<prompt>'"; fi

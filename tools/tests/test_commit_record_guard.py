@@ -104,6 +104,27 @@ class GuardTest(unittest.TestCase):
         r = run_hook(f'cd {self.repo} && git -C {other} commit -am x', self.repo)
         self.assertEqual(r.returncode, 2)
 
+    def test_疎通確認の印は状態にかかわらず必ず止める(self):
+        """②で使う印。記録があっても、gitの外でも止まる＝呼ばれていれば必ず分かる"""
+        self.touch('PROGRESS.md', '# 進捗\n更新\n')   # 本来なら通る状態
+        r = run_hook(f'CR_RECORD_GUARD_PROBE=1 git -C {self.repo} commit --dry-run', self.repo)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('発火しています', r.stderr)
+        with tempfile.TemporaryDirectory() as d:   # gitの外でも止まる
+            r = run_hook('CR_RECORD_GUARD_PROBE=1 git commit --dry-run', d)
+            self.assertEqual(r.returncode, 2)
+
+    def test_本文に印の名前を書いても誤作動しない(self):
+        """ヒアドキュメントの中身は見ない。フックを説明する文書を書いた時に実際に誤作動した"""
+        self.touch('app.py', 'x = 2\n')
+        # 通す指定の名前を本文に書いただけでは、関門は外れない
+        r = run_hook("git commit -F - <<'EOF'\n通すにはCR_SKIP_RECORD_GUARD=1を付ける\nEOF", self.repo)
+        self.assertEqual(r.returncode, 2)
+        # 疎通確認の印を本文に書いただけでは止まらない（記録があるので通る）
+        self.touch('PROGRESS.md', '# 進捗\n更新\n')
+        r = run_hook("git commit -F - <<'EOF'\n確認はCR_RECORD_GUARD_PROBE=1で行う\nEOF", self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     # --- 通す ---
 
     def test_git_Cの先に記録があれば通る(self):
@@ -194,27 +215,27 @@ class CheckGuardTest(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.dir = Path(self.tmp.name) / 'rg'
+        self.repo = Path(self.tmp.name) / 'work'
+        self.repo.mkdir()
+        git(self.repo, 'init', '-b', 'main')
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_check(self, hook=HOOK):
-        return subprocess.run(['bash', str(self.CHECK), '--hook', str(hook), '--dir', str(self.dir)],
+    def run_check(self, hook=HOOK, repo=None):
+        return subprocess.run(['bash', str(self.CHECK), '--hook', str(hook),
+                               '--repo', str(repo if repo else self.repo)],
                               capture_output=True, text=True)
 
-    def test_止めるスクリプトなら有効と出て試すコマンドを出す(self):
+    def test_判定が正しければ作業するリポで試すコマンドを出す(self):
         r = self.run_check()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn('スクリプト単体: 有効', r.stdout)
-        self.assertIn(f'git -C {self.dir} commit -m 疎通確認', r.stdout)
-        # 用意したリポは「記録なしのcommit」の一歩手前で止まっている
-        staged = subprocess.run(['git', '-C', str(self.dir), 'diff', '--cached', '--name-only'],
-                                capture_output=True, text=True).stdout.split()
-        self.assertEqual(staged, ['app.py'])
-        tracked = subprocess.run(['git', '-C', str(self.dir), 'ls-files'],
-                                 capture_output=True, text=True).stdout
-        self.assertIn('PROGRESS.md', tracked)
+        self.assertIn('スクリプトの判定: 正しい', r.stdout)
+        # ②は使い捨てではなく、これから作業するリポを指す
+        self.assertIn(f'CR_RECORD_GUARD_PROBE=1 git -C {self.repo.resolve()} commit --dry-run', r.stdout)
+        self.assertIn('--dry-run なので', r.stdout)   # 呼ばれなくても何もコミットされない
+        # 作業するリポの中には何も作らない
+        self.assertEqual(sorted(p.name for p in self.repo.iterdir()), ['.git'])
 
     def test_止めないスクリプトなら失敗で返す(self):
         stub = Path(self.tmp.name) / 'stub.sh'
@@ -223,12 +244,11 @@ class CheckGuardTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn('止めませんでした', r.stderr)
 
-    def test_自分が作ったのでない場所は消さない(self):
-        self.dir.mkdir(parents=True)
-        (self.dir / '大事なファイル').write_text('消えては困る', encoding='utf-8')
-        r = self.run_check()
-        self.assertEqual(r.returncode, 2)
-        self.assertTrue((self.dir / '大事なファイル').exists())
+    def test_gitリポでなければ中止する(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.run_check(repo=d)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('gitリポジトリではありません', r.stderr)
 
 
 if __name__ == '__main__':

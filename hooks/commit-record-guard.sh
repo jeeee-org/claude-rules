@@ -11,8 +11,9 @@
 #    CR_SKIP_RECORD_GUARD=1 を付けて通す（コマンドに残るので、あとから見て分かる）。
 #  - CLAUDE.mdは数えない。ルールだけを直したcommitも記録は要る。
 # 登録はclaude-rules/install.shが行う（~/.claude/settings.json のPreToolUse）。
-# **登録しても、そのセッションで発火するとは限らない。** 導入したら
-# tools/check-record-guard.sh で1回確かめる（IMPROVEMENTS 2026-09-18）。
+# **登録しても発火するとは限らず、割れ方はリポ単位**（同じセッションの同じ階層で、
+# 一方のリポは止まり他方は通る。条件は未特定。IMPROVEMENTS 2026-09-18）。
+# **作業するリポごとに** tools/check-record-guard.sh で確かめる。
 set -u
 
 RECORD_RE='(^|/)(REQUIREMENTS|PROGRESS|NOTES)\.md$|(^|/)checkpoints/'
@@ -44,14 +45,24 @@ expand_home() { case "$1" in '~'|'~/'*) printf '%s' "$HOME${1#\~}" ;; *) printf 
 cmd=$(read_json '.tool_input.command')
 [ -n "$cmd" ] || exit 0
 
-# ヒアドキュメントの中身は見ない（commitメッセージ本文にgit commitと書いてあることがある）
+# ヒアドキュメントの中身は見ない。**印の判定もここから行う**——commitメッセージや
+# 文書の本文に印の名前を書いただけで、関門が外れたり止まったりしないように
+# （実際に、このフックを説明する文書を書いた時に誤作動した）
 head_part=${cmd%%<<*}
+
+# 疎通確認（tools/check-record-guard.sh の②）。**呼ばれていれば必ず止める**ので、
+# 「このリポでフックが起動しているか」だけを見られる。リポの状態も判定も通らない。
+case "$head_part" in
+  *CR_RECORD_GUARD_PROBE*)
+    echo "記録の関門: 発火しています（疎通確認。このリポでは関門が効いています）" >&2
+    exit 2 ;;
+esac
 
 # 本当にcommitを作ろうとしているか
 grep -Eq "(^|[;&|(]|&&)[[:space:]]*${GIT_COMMIT_RE}([[:space:]]|\$)" <<<"$head_part" || exit 0
 
 # 通す指定（理由を述べたうえでの明示。コマンドに残る）
-case "$cmd" in *CR_SKIP_RECORD_GUARD*) exit 0 ;; esac
+case "$head_part" in *CR_SKIP_RECORD_GUARD*) exit 0 ;; esac
 # 履歴を作らない・作り直すだけのものは対象外
 case "$head_part" in *--dry-run*|*--amend*) exit 0 ;; esac
 

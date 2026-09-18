@@ -2,63 +2,54 @@
 # check-record-guard.sh — 記録の関門（hooks/commit-record-guard.sh）が、いま効いているかを確かめる。
 #
 # 確かめることは2つで、別物:
-#   ①スクリプト単体が止めるか   → ここで判定できる（記録なしのcommitを食わせてexit 2か見る）
-#   ②このセッションで発火するか → **ここでは判定できない**。Bashツール経由でcommitして初めて分かる
-# 登録は正しいのに発火しないセッションが実在する（IMPROVEMENTS 2026-09-18。条件は未特定）。
-# **関門は効いていない時がいちばん危ない**ので、導入したら必ず②まで通す。
+#   ①スクリプトの判定が正しいか   → ここで判定する（使い捨てのリポで、記録なしのcommitを食わせる）
+#   ②そのリポで発火するか         → **ここでは判定できない。**出したコマンドをBashツールで打つ
+# **①が通っても②は保証されない。**同じセッション・同じ階層でも、一方のリポでは止まり
+# 他方では通る例がある（呼び出し側でフックが起動していない。条件は未特定。IMPROVEMENTS 2026-09-18）。
+# 偽の通過は「関門があるつもりで記録が抜ける」ので、**これから作業するリポで**②まで通す。
 #
-#   check-record-guard.sh [--hook PATH] [--dir PATH]
+#   check-record-guard.sh [--hook PATH] [--repo DIR]
 #     --hook  試すスクリプト（既定は ${CLAUDE_CONFIG_DIR:-~/.claude}/hooks/commit-record-guard.sh）
-#     --dir   使い捨てのリポを置く場所（既定は ${TMPDIR:-/tmp}/record-guard-check）
-#   exitは 0=スクリプト単体は有効 / 1=止めなかった / 2=準備できず中止
+#     --repo  ②を試すリポ（既定はカレント）。**これから作業するリポ**を指す
+#   exitは 0=①は正しい / 1=①で止めなかった / 2=準備できず中止
 set -u
 
 HOOK="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/commit-record-guard.sh"
-DIR="${TMPDIR:-/tmp}/record-guard-check"
-MARKER=.record-guard-check
+REPO=.
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --hook) HOOK=${2:-}; shift 2 ;;
-    --dir)  DIR=${2:-}; shift 2 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --repo) REPO=${2:-}; shift 2 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "不明な引数: $1" >&2; exit 2 ;;
   esac
 done
 
 [ -r "$HOOK" ] || { echo "✗ スクリプトがありません: $HOOK（claude-rulesのinstall.shを実行してください）" >&2; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "✗ gitがありません" >&2; exit 2; }
+top=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null) ||
+  { echo "✗ gitリポジトリではありません: $REPO" >&2; exit 2; }
 
-# 使い捨てのリポを作り直す。自分が作った印のある場所だけを消す
-if [ -e "$DIR" ] && [ ! -e "$DIR/$MARKER" ]; then
-  echo "✗ $DIR は、このコマンドが作ったものではありません。--dir で別の場所を指してください。" >&2
-  exit 2
-fi
-rm -rf "$DIR"
-mkdir -p "$DIR" || exit 2
-: > "$DIR/$MARKER"
-git -C "$DIR" init -q -b main || exit 2
-git -C "$DIR" config user.email check@example.com
-git -C "$DIR" config user.name check
-printf '# 進捗\n' > "$DIR/PROGRESS.md"
-mkdir -p "$DIR/checkpoints"
-printf '# ログ\n' > "$DIR/checkpoints/2026-01-01-疎通確認-用意.md"
-git -C "$DIR" add -A >/dev/null
-git -C "$DIR" commit -qm 初期 >/dev/null
-# 記録ではない変更だけを載せる（この状態のcommitは止まるのが正しい）
-printf 'x = 2\n' > "$DIR/app.py"
-git -C "$DIR" add -A >/dev/null
+# ① 使い捨てのリポで、記録なしのcommitを食わせる（このリポの中には何も作らない）
+tmp=$(mktemp -d) || exit 2
+trap 'rm -rf "$tmp"' EXIT
+git -C "$tmp" init -q -b main || exit 2
+git -C "$tmp" config user.email check@example.com
+git -C "$tmp" config user.name check
+printf '# 進捗\n' > "$tmp/PROGRESS.md"
+git -C "$tmp" add -A >/dev/null
+git -C "$tmp" commit -qm 初期 >/dev/null
+printf 'x = 2\n' > "$tmp/app.py"   # 記録ではない変更だけ
+git -C "$tmp" add -A >/dev/null
 
-TRY="git -C $DIR commit -m 疎通確認"
-
-payload=$(printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$TRY" "$DIR")
+payload=$(printf '{"tool_name":"Bash","tool_input":{"command":"git -C %s commit -m 確認"},"cwd":"%s"}' "$tmp" "$tmp")
 out=$(printf '%s' "$payload" | bash "$HOOK" 2>&1)
 code=$?
-
 if [ "$code" = 2 ]; then
-  echo "① スクリプト単体: 有効（記録なしのcommitをexit 2で止めた）"
+  echo "① スクリプトの判定: 正しい（記録なしのcommitをexit 2で止めた）"
 else
-  echo "① スクリプト単体: ✗ 止めませんでした（exit $code）" >&2
+  echo "① スクリプトの判定: ✗ 止めませんでした（exit $code）" >&2
   [ -n "$out" ] && echo "$out" >&2
   echo "   $HOOK を確かめてください。" >&2
   exit 1
@@ -66,13 +57,16 @@ fi
 
 cat <<EOS
 
-② このセッションで発火するか（ここでは判定できません）
+② $top で発火するか（ここでは判定できません）
    次のコマンドを、**このセッションのBashツールで**そのまま実行してください:
 
-     $TRY
+     CR_RECORD_GUARD_PROBE=1 git -C $top commit --dry-run
 
-   止まった   = 関門はこのセッションで効いている
-   commitできた = 登録されていても発火していない。Claude Codeを再起動して、もう一度ここから
+   止まった     = このリポで関門は効いている
+   結果が返った = フックが呼ばれていない。**このリポでは記録の抜けを捕まえられない**
+                  （Claude Codeを再起動してもう一度。それでも通るなら、そのリポでは
+                   記録を自分で確かめる）
 
-   終わったら片付け: rm -rf $DIR
+   ※ --dry-run なので、呼ばれなかった場合も何もコミットされません。
+   ※ リポごとに割れるので、**作業するリポが変わったら、そのつど確かめます。**
 EOS
