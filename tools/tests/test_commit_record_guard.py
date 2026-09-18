@@ -43,6 +43,19 @@ class GuardTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def other_repo(self):
+        """記録の方式は使うが、まだ記録を書いていない別のリポ"""
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: subprocess.run(['rm', '-rf', str(d)]))
+        git(d, 'init', '-b', 'main')
+        git(d, 'config', 'user.email', 't@example.com')
+        git(d, 'config', 'user.name', 'test')
+        (d / 'PROGRESS.md').write_text('# 進捗\n', encoding='utf-8')
+        (d / 'app.py').write_text('x = 1\n', encoding='utf-8')
+        git(d, 'add', '-A')
+        git(d, 'commit', '-m', '初期')
+        return d
+
     def touch(self, rel, text='変更\n'):
         p = self.repo / rel
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -67,21 +80,45 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
 
     def test_cdで別のリポを指しても見る先が変わる(self):
-        other = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: subprocess.run(['rm', '-rf', str(other)]))
-        git(other, 'init', '-b', 'main')
-        git(other, 'config', 'user.email', 't@example.com')
-        git(other, 'config', 'user.name', 'test')
-        (other / 'PROGRESS.md').write_text('# 進捗\n', encoding='utf-8')
-        git(other, 'add', '-A')
-        git(other, 'commit', '-m', '初期')
-        (other / 'app.py').write_text('x = 1\n', encoding='utf-8')
+        other = self.other_repo()
+        (other / 'app.py').write_text('x = 2\n', encoding='utf-8')
         # 実行元は記録を書き終えたリポでも、commitするのは別のリポ
         self.touch('PROGRESS.md', '# 進捗\n更新\n')
         r = run_hook(f'cd {other} && git add -A && git commit -m x', self.repo)
         self.assertEqual(r.returncode, 2)
 
+    def test_git_Cで指したリポで判定する(self):
+        """cwdが記録を書き終えたリポでも、-Cが指すリポに記録が無ければ止める"""
+        other = self.other_repo()
+        (other / 'app.py').write_text('x = 2\n', encoding='utf-8')
+        self.touch('PROGRESS.md', '# 進捗\n更新\n')   # 実行元には記録がある
+        r = run_hook(f'git -C {other} add -A && git -C {other} commit -m x', self.repo)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn(str(other), r.stderr)   # どのリポを見たかを言う
+
+    def test_git_Cはcdより優先する(self):
+        """実際のgitと同じ順。cd先に記録があっても、-C先に無ければ止める"""
+        other = self.other_repo()
+        (other / 'app.py').write_text('x = 2\n', encoding='utf-8')
+        self.touch('PROGRESS.md', '# 進捗\n更新\n')
+        r = run_hook(f'cd {self.repo} && git -C {other} commit -am x', self.repo)
+        self.assertEqual(r.returncode, 2)
+
     # --- 通す ---
+
+    def test_git_Cの先に記録があれば通る(self):
+        other = self.other_repo()
+        (other / 'checkpoints').mkdir()
+        (other / 'checkpoints' / '2026-01-02-対応-切り分け.md').write_text('# ログ\n', encoding='utf-8')
+        self.touch('app.py', 'x = 2\n')   # 実行元には記録が無い
+        r = run_hook(f'git -C {other} add -A && git -C {other} commit -m x', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_解けない_Cの指定は判定しない(self):
+        """変数展開などで行き先が分からない時は、別のリポを見て誤るより通す"""
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook('git -C "$d" commit -am x', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_checkpointを足していれば通る(self):
         self.touch('app.py', 'x = 2\n')
@@ -148,6 +185,50 @@ class GuardTest(unittest.TestCase):
 
     def test_変更が何も無ければ黙る(self):
         self.assertEqual(run_hook('git commit -am x', self.repo).returncode, 0)
+
+
+class CheckGuardTest(unittest.TestCase):
+    """tools/check-record-guard.sh — 関門が効いているかを確かめるコマンド"""
+
+    CHECK = Path(__file__).resolve().parents[1] / 'check-record-guard.sh'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name) / 'rg'
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_check(self, hook=HOOK):
+        return subprocess.run(['bash', str(self.CHECK), '--hook', str(hook), '--dir', str(self.dir)],
+                              capture_output=True, text=True)
+
+    def test_止めるスクリプトなら有効と出て試すコマンドを出す(self):
+        r = self.run_check()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('スクリプト単体: 有効', r.stdout)
+        self.assertIn(f'git -C {self.dir} commit -m 疎通確認', r.stdout)
+        # 用意したリポは「記録なしのcommit」の一歩手前で止まっている
+        staged = subprocess.run(['git', '-C', str(self.dir), 'diff', '--cached', '--name-only'],
+                                capture_output=True, text=True).stdout.split()
+        self.assertEqual(staged, ['app.py'])
+        tracked = subprocess.run(['git', '-C', str(self.dir), 'ls-files'],
+                                 capture_output=True, text=True).stdout
+        self.assertIn('PROGRESS.md', tracked)
+
+    def test_止めないスクリプトなら失敗で返す(self):
+        stub = Path(self.tmp.name) / 'stub.sh'
+        stub.write_text('#!/usr/bin/env bash\nexit 0\n', encoding='utf-8')
+        r = self.run_check(hook=stub)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('止めませんでした', r.stderr)
+
+    def test_自分が作ったのでない場所は消さない(self):
+        self.dir.mkdir(parents=True)
+        (self.dir / '大事なファイル').write_text('消えては困る', encoding='utf-8')
+        r = self.run_check()
+        self.assertEqual(r.returncode, 2)
+        self.assertTrue((self.dir / '大事なファイル').exists())
 
 
 if __name__ == '__main__':

@@ -182,6 +182,9 @@ fi
 mkdir -p "$CLAUDE_CONFIG_DIR/tools"
 cp "$SRC_DIR/tools/check-limits.sh" "$CLAUDE_CONFIG_DIR/tools/check-limits.sh"
 chmod +x "$CLAUDE_CONFIG_DIR/tools/check-limits.sh"
+# 記録の関門の疎通確認（登録しても発火しないセッションが実在するため、導入の一部として回す）
+cp "$SRC_DIR/tools/check-record-guard.sh" "$CLAUDE_CONFIG_DIR/tools/check-record-guard.sh"
+chmod +x "$CLAUDE_CONFIG_DIR/tools/check-record-guard.sh"
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/tools"
   cp "$SRC_DIR/tools/check-limits.sh" "$CODEX_HOME/tools/check-limits.sh"
@@ -243,6 +246,7 @@ else
   echo "  - hooks/commit-record-guard.sh（commit時の記録の関門。既定で有効）"
 fi
 echo "  - tools/check-limits.sh（常時ロード上限の判定。§2 から参照）"
+echo "  - tools/check-record-guard.sh（記録の関門の疎通確認）"
 if [ "$INSTALL_CODEX" = 1 ]; then
   echo "  - $CODEX_TARGET_MD（codex-rules ブロック）"
   echo "  - $CODEX_HOME/skills/init-rules"
@@ -252,6 +256,9 @@ if [ "$INSTALL_CODEX" = 1 ]; then
 else
   echo "  - Codex 側はスキップ（CLAUDE_RULES_INSTALL_CODEX=0 / --no-codex）"
 fi
+echo ""
+echo "記録の関門が**このセッションで**効くかは、登録だけでは決まりません（発火しない例があります）。"
+echo "導入したら1回確かめてください: $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh"
 echo ""
 echo "Claude Code を再起動するか /reload-skills を実行してください。"
 if [ "$INSTALL_CODEX" = 1 ]; then echo "Codex分類を使う場合: $CODEX_HOME/hooks/codex-triage [codex options] -- '<prompt>'"; fi
