@@ -1,41 +1,41 @@
 #!/usr/bin/env python3
-"""既存PJのcheckpointを、リポ直下の checkpoints/YYYY-MM-DD-作業名-中身.md の形へ揃える。
+"""既存PJのcheckpointを、リポ直下のcheckpoints/YYYY-MM-DD-作業名-中身.mdの形へ揃える。
 
-グローバル §1・§2（2026-09-18 改訂）への追従用。名前は判断が要るのでコマンドは決めない。
-作業名は REQUIREMENTS.md の進行中の作業カードの見出しと同じ語にする（同じ作業の複数日ぶんを
-checkpoints/*-作業名-* で一括して引くため）。1日で終わった過去分は1語のままでよい。
-対応表（TSV）を作り、人かClaudeが埋めてから apply する。ADRの仕分けも対象外。
+グローバル §1・§2（2026-09-18改訂）への追従用。名前は判断が要るのでコマンドは決めない。
+作業名はREQUIREMENTS.mdの進行中の作業カードの見出しと同じ語にする（同じ作業の複数日ぶんを
+checkpoints/*-作業名-*で一括して引くため）。1日で終わった過去分は1語のままでよい。
+対応表（TSV）を作り、人かClaudeが埋めてからapplyする。ADRの仕分けも対象外。
 
-移行は「移動」と「命名」の2つの作業で、前者だけ済んだ中間状態（docs/checkpoints/ から移してあるが
-名前は YYYY-MM-DD.md のまま）が実際に生まれる。入口は移動元を見て自動で決める：
-  docs/checkpoints/ に日付名のcheckpointがある → checkpoints/ へ移して改名する
-  無くて checkpoints/ に日付名のものがある     → その場で改名だけする
+移行は「移動」と「命名」の2つの作業で、前者だけ済んだ中間状態（docs/checkpoints/から移してあるが
+名前はYYYY-MM-DD.mdのまま）が実際に生まれる。入口は移動元を見て自動で決める：
+  docs/checkpoints/に日付名のcheckpointがある → checkpoints/へ移して改名する
+  無くてcheckpoints/に日付名のものがある     → その場で改名だけする
 
   migrate-checkpoints.py plan  [--repo DIR] [--out names.tsv]
       対象の一覧と、見出しから拾った名前の候補を書き出す（何も動かさない）
   migrate-checkpoints.py apply --names names.tsv [--repo DIR] [--allow-dirty]
-      git mv・見出しの差し替え・参照の張り直しを行い、最後に check を走らせる（commit はしない）
+      git mv・見出しの差し替え・参照の張り直しを行い、最後にcheckを走らせる（commitはしない）
   migrate-checkpoints.py check [--repo DIR]
-      旧パスの残りと、リンク切れを検査する（問題があれば exit 1）。見るのは
-      ①docs/checkpoints/YYYY-MM-DD.md の残り ②改名前の名前のまま実在しない checkpoints/YYYY-MM-DD.md
-      ③PJの中の .md から張られた相対リンクの切れ（移動で行き先がずれた外向きのリンクを含む）。
-      checkpoints/ 内の旧パスは移行の記録なので①②に数えない（リンク切れは見る）。
-      日付の無い旧ディレクトリへの言及（READMEの表、.gitignore のコメントなど）は、
-      説明として残すこともあるので「確かめる」として出すだけにする（exit は変えない）。
-      こちらは Markdown 以外も含め、git 管理下のテキストファイルすべてを見る
+      旧パスの残りと、リンク切れを検査する（問題があればexit 1）。見るのは
+      ①docs/checkpoints/YYYY-MM-DD.mdの残り ②改名前の名前のまま実在しないcheckpoints/YYYY-MM-DD.md
+      ③PJの中の.mdから張られた相対リンクの切れ（移動で行き先がずれた外向きのリンクを含む）。
+      checkpoints/内の旧パスは移行の記録なので①②に数えない（リンク切れは見る）。
+      日付の無い旧ディレクトリへの言及（READMEの表、.gitignoreのコメントなど）は、
+      説明として残すこともあるので「確かめる」として出すだけにする（exitは変えない）。
+      こちらはMarkdown以外も含め、git管理下のテキストファイルすべてを見る
 
---repo DIR は「移すPJのディレクトリ」で、plan / apply / check とも同じ意味。git のルートでなくてよい
-（モノレポの tasks/<name> など）。
+--repo DIRは「移すPJのディレクトリ」で、plan / apply / checkとも同じ意味。gitのルートでなくてよい
+（モノレポのtasks/<name>など）。
 参照の張り直しと検査は、そのPJのものと決まる参照だけを対象にする：
-  - Markdown のリンクは、書かれたファイルの場所で解決した実パスが移動元と一致する時だけ張り直す
-    （移動で1段浅くなるぶん、checkpoint から外を指す相対リンクも旧い位置で解決して張り直す）
-  - 本文中の docs/checkpoints/YYYY-MM-DD.md は、書かれたファイルの場所から上へ辿り、実在する最も近い
-    docs/checkpoints/ に属するとみなす。別のPJのものなら触らない（同じ日付でも別の文書）。
+  - Markdownのリンクは、書かれたファイルの場所で解決した実パスが移動元と一致する時だけ張り直す
+    （移動で1段浅くなるぶん、checkpointから外を指す相対リンクも旧い位置で解決して張り直す）
+  - 本文中のdocs/checkpoints/YYYY-MM-DD.mdは、書かれたファイルの場所から上へ辿り、実在する最も近い
+    docs/checkpoints/に属するとみなす。別のPJのものなら触らない（同じ日付でも別の文書）。
     tasks/<name>/docs/checkpoints/… のように場所付きで書かれたものは、その場所そのものとして扱う
 
 対応表は1行に「日付<TAB>名前」。名前は「作業名-中身」（どちらも日本語の短い語）で、
 空白と / \\ : * ? " < > | は使えない。
-# で始まる行は読み飛ばす。exit は 0=問題なし / 1=check で問題あり / 2=中止（何も変えていない）。
+# で始まる行は読み飛ばす。exitの値は0=問題なし / 1=checkで問題あり / 2=中止（何も変えていない）。
 """
 import argparse
 import posixpath
@@ -49,7 +49,7 @@ OLD_DIR = 'docs/checkpoints'
 NEW_DIR = 'checkpoints'
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 NAMED_RE = re.compile(r'^\d{4}-\d{2}-\d{2}-.+')
-# Markdown のリンク先。タイトル付き（空白を含む）は対象外
+# Markdownのリンク先。タイトル付き（空白を含む）は対象外
 LINK_RE = re.compile(r'(\]\()([^)\s]+?)(#[^)\s]*)?(\))')
 LINK_ANY = r'\]\([^)\s]+\)'
 BAD_NAME_RE = re.compile(r'[\s/\\:*?"<>|]')
@@ -57,15 +57,15 @@ TEXT_SUFFIXES = ('.md', '.json')
 
 
 def dated_re(src):
-    """リンクではない本文中の、日付名のcheckpointへの言及（方式を説明する YYYY-MM-DD は残す）。
+    """リンクではない本文中の、日付名のcheckpointへの言及（方式を説明するYYYY-MM-DDは残す）。
 
-    先頭の group は場所（tasks/x/ など。素の docs/checkpoints/… なら空）
+    先頭のgroupは場所（tasks/x/など。素のdocs/checkpoints/… なら空）
     """
     return re.compile(r'(?<![\w./-])((?:[\w.-]+/)*)' + re.escape(src) + r'/(\d{4}-\d{2}-\d{2})\.md')
 
 
 def dir_only_re(src):
-    """日付の有無を問わないディレクトリへの言及。日付入りは dated_re の側で数える"""
+    """日付の有無を問わないディレクトリへの言及。日付入りはdated_reの側で数える"""
     return re.compile(r'(?<![\w./-])((?:[\w.-]+/)*)' + re.escape(src) + r'(?![\w-])')
 
 
@@ -74,8 +74,8 @@ class Abort(Exception):
 
 
 class Ctx:
-    """top = git のルート、rel = 移すPJのディレクトリ（ルートからの相対。ルート自身なら空）、
-    src = 移す元（PJ相対。docs/checkpoints なら移動、checkpoints なら改名だけ）"""
+    """top = gitのルート、rel = 移すPJのディレクトリ（ルートからの相対。ルート自身なら空）、
+    src = 移す元（PJ相対。docs/checkpointsなら移動、checkpointsなら改名だけ）"""
 
     def __init__(self, top, rel, src=OLD_DIR):
         self.top, self.rel, self.src = top, rel, src
@@ -84,7 +84,7 @@ class Ctx:
         self.rename_only = src == NEW_DIR
         self.dated = dated_re(src)
         self.dir_only = dir_only_re(src)
-        # 本文置換の時、リンク先（rewrite_links が実パスで判断済み）は飛ばす
+        # 本文置換の時、リンク先（rewrite_linksが実パスで判断済み）は飛ばす
         self.text_or_link = re.compile(LINK_ANY + '|' + self.dated.pattern)
 
     def with_src(self, src):
@@ -100,10 +100,10 @@ class Ctx:
 
 
 def git(repo, *args):
-    # 日本語のパスを 8 進エスケープさせない（core.quotepath の既定は true）
+    # 日本語のパスを8進エスケープさせない（core.quotepathの既定はtrue）
     r = subprocess.run(['git', '-C', str(repo), '-c', 'core.quotepath=false', *args], capture_output=True)
     if r.returncode != 0:
-        raise Abort(f'git {" ".join(args)} が失敗: {r.stderr.decode("utf-8", "replace").strip()}')
+        raise Abort(f'git {" ".join(args)}が失敗: {r.stderr.decode("utf-8", "replace").strip()}')
     return r.stdout.decode('utf-8')
 
 
@@ -112,10 +112,10 @@ def tracked(ctx, suffixes=TEXT_SUFFIXES):
 
 
 def resolve_mention(f, prefix, tail, ctx, exists):
-    """本文中の言及が移すPJのものなら、そのリポ相対パスを返す（違えば None）。
+    """本文中の言及が移すPJのものなら、そのリポ相対パスを返す（違えばNone）。
 
-    場所付き（tasks/x/docs/checkpoints/…）はその場所そのもの。素の docs/checkpoints/… は、書かれた
-    ファイルの場所から上へ辿り、実在する最も近い docs/checkpoints/ に属するとみなす（モノレポで、別の
+    場所付き（tasks/x/docs/checkpoints/…）はその場所そのもの。素のdocs/checkpoints/… は、書かれた
+    ファイルの場所から上へ辿り、実在する最も近いdocs/checkpoints/に属するとみなす（モノレポで、別の
     PJの同じ日付の記録が本体の新パスへ化けた事故への対策）。
     """
     target = posixpath.normpath(ctx.old_dir + tail)
@@ -155,22 +155,22 @@ def old_checkpoints(ctx):
 
 
 def pick_ctx(top, rel):
-    """移す元を決める。docs/checkpoints/ にあれば移動、無くて checkpoints/ にあれば改名だけ"""
+    """移す元を決める。docs/checkpoints/にあれば移動、無くてcheckpoints/にあれば改名だけ"""
     move, rename = Ctx(top, rel, OLD_DIR), Ctx(top, rel, NEW_DIR)
     if old_checkpoints(move)[0]:
         return move, len(old_checkpoints(rename)[0])
     if old_checkpoints(rename)[0]:
         return rename, 0
-    raise Abort(f'{move.old_dir}/ にも {rename.new_dir}/ にも、日付名（YYYY-MM-DD.md）のcheckpointが無い')
+    raise Abort(f'{move.old_dir}/にも{rename.new_dir}/にも、日付名（YYYY-MM-DD.md）のcheckpointが無い')
 
 
 def announce(ctx, dated, left):
     if ctx.rename_only:
-        print(f'改名だけ: {ctx.old_dir}/ の日付名 {len(dated)} 件（移動は済んでいる）', file=sys.stderr)
+        print(f'改名だけ: {ctx.old_dir}/の日付名{len(dated)}件（移動は済んでいる）', file=sys.stderr)
     else:
-        print(f'移動と改名: {ctx.old_dir}/ の {len(dated)} 件を {ctx.new_dir}/ へ', file=sys.stderr)
+        print(f'移動と改名: {ctx.old_dir}/の{len(dated)}件を{ctx.new_dir}/へ', file=sys.stderr)
     if left:
-        print(f'※ {ctx.new_dir}/ にも日付名のままの {left} 件がある。この回のあと、もう一度 plan → apply で改名する',
+        print(f'※ {ctx.new_dir}/にも日付名のままの{left}件がある。この回のあと、もう一度plan → applyで改名する',
               file=sys.stderr)
 
 
@@ -199,18 +199,18 @@ def load_names(path, dated, ctx):
         if not DATE_RE.match(date):
             raise Abort(f'{path}:{n}: 日付の形ではない: {date}')
         if not name:
-            raise Abort(f'{path}:{n}: {date} の名前が空')
+            raise Abort(f'{path}:{n}: {date}の名前が空')
         if BAD_NAME_RE.search(name):
-            raise Abort(f'{path}:{n}: {date} の名前に使えない文字がある（空白と / \\ : * ? " < > |）: {name}')
+            raise Abort(f'{path}:{n}: {date}の名前に使えない文字がある（空白と / \\ : * ? " < > |）: {name}')
         if date in names:
-            raise Abort(f'{path}:{n}: {date} が2回ある')
+            raise Abort(f'{path}:{n}: {date}が2回ある')
         names[date] = name
     want = {p.stem for p in dated}
     missing, extra = sorted(want - names.keys()), sorted(names.keys() - want)
     if missing:
         raise Abort('対応表に無い日付がある: ' + ', '.join(missing))
     if extra:
-        raise Abort(f'{ctx.old_dir}/ に無い日付が対応表にある: ' + ', '.join(extra))
+        raise Abort(f'{ctx.old_dir}/に無い日付が対応表にある: ' + ', '.join(extra))
     return names
 
 
@@ -261,11 +261,11 @@ def cmd_plan(ctx, left, out):
     text += ''.join(f'{p.stem}\t{guess_name(p)}\n' for p in dated)
     if out:
         Path(out).write_text(text, encoding='utf-8')
-        print(f'{out} に {len(dated)} 件を書いた', file=sys.stderr)
+        print(f'{out}に{len(dated)}件を書いた', file=sys.stderr)
     else:
         sys.stdout.write(text)
     if done:
-        print(f'改名済みなので触らない: {len(done)} 件', file=sys.stderr)
+        print(f'改名済みなので触らない: {len(done)}件', file=sys.stderr)
     for p in others:
         print(f'日付名でないので移さない: {p.relative_to(ctx.top).as_posix()}', file=sys.stderr)
     return 0
@@ -276,12 +276,12 @@ def cmd_apply(ctx, left, names_path, allow_dirty):
     announce(ctx, dated, left)
     names = load_names(names_path, dated, ctx)
     if not allow_dirty and git(ctx.top, 'status', '--porcelain').strip():
-        raise Abort('作業ツリーに未コミットの変更がある。commit してから流す（--allow-dirty で無視）')
+        raise Abort('作業ツリーに未コミットの変更がある。commitしてから流す（--allow-dirtyで無視）')
     moves = {f'{ctx.old_dir}/{d}.md': f'{ctx.new_dir}/{d}-{n}.md' for d, n in names.items()}
     all_tracked = set(tracked(ctx, suffixes=''))
     untracked = sorted(set(moves) - all_tracked)
     if untracked:
-        raise Abort('git 管理外の旧checkpointがある（先に add する）: ' + ', '.join(untracked))
+        raise Abort('git管理外の旧checkpointがある（先にaddする）: ' + ', '.join(untracked))
     clash = [n for n in moves.values() if (ctx.top / n).exists()]
     if clash:
         raise Abort('移動先が既にある: ' + ', '.join(clash))
@@ -307,18 +307,18 @@ def cmd_apply(ctx, left, names_path, allow_dirty):
             (ctx.top / ctx.old_dir).rmdir()
         except OSError:
             pass
-    print(f'{"改名" if ctx.rename_only else "移動"} {len(moves)} 件 / 書き換え {len(edited)} ファイル')
+    print(f'{"改名" if ctx.rename_only else "移動"} {len(moves)}件/書き換え{len(edited)}ファイル')
     for f in edited:
         print(f'  書き換え: {f}')
     if done:
-        print(f'改名済みなので触らなかった: {len(done)} 件', file=sys.stderr)
+        print(f'改名済みなので触らなかった: {len(done)}件', file=sys.stderr)
     for p in others:
         print(f'日付名でないので残した: {p.relative_to(ctx.top).as_posix()}', file=sys.stderr)
     return cmd_check(ctx)
 
 
 def read_text(path):
-    """テキストなら中身を、バイナリ（先頭に NUL がある）なら None を返す"""
+    """テキストなら中身を、バイナリ（先頭にNULがある）ならNoneを返す"""
     data = path.read_bytes()
     if b'\0' in data[:8192]:
         return None
@@ -351,9 +351,9 @@ def cmd_check(ctx):
         text = read_text(p)
         if text is None:
             continue
-        if not f.startswith(f'{ctx.new_dir}/'):  # checkpoint は追記専用の記録。旧パスを書いた対応表などは正しい
+        if not f.startswith(f'{ctx.new_dir}/'):  # checkpointは追記専用の記録。旧パスを書いた対応表などは正しい
             if f.endswith(TEXT_SUFFIXES):
-                # 移すPJのものと決まる言及だけ。別のPJの docs/checkpoints/ は、そのPJを移す時に見る
+                # 移すPJのものと決まる言及だけ。別のPJのdocs/checkpoints/は、そのPJを移す時に見る
                 problems += [f'{f}: 旧パスが残っている: {s}' for s, _ in dated_mentions(text, f, moved)]
                 # 移動は済んだが名前が古いままの言及。まだ改名していないPJでは正しい参照なので、実在しない分だけ
                 problems += [f'{f}: 改名前の名前のまま残っている: {s}'
@@ -395,7 +395,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest='cmd', required=True)
     for name in ('plan', 'apply', 'check'):
         s = sub.add_parser(name)
-        s.add_argument('--repo', default='.', help='移すPJのディレクトリ（モノレポのサブディレクトリ可。git のルートでなくてよい）')
+        s.add_argument('--repo', default='.', help='移すPJのディレクトリ（モノレポのサブディレクトリ可。gitのルートでなくてよい）')
         if name == 'plan':
             s.add_argument('--out')
         if name == 'apply':
@@ -405,7 +405,7 @@ def main(argv=None):
     try:
         base = Path(a.repo)
         if not base.is_dir():
-            raise Abort(f'--repo のディレクトリが無い: {a.repo}')
+            raise Abort(f'--repoのディレクトリが無い: {a.repo}')
         top = Path(git(base, 'rev-parse', '--show-toplevel').strip()).resolve()
         rel = base.resolve().relative_to(top).as_posix()
         rel = '' if rel == '.' else rel
