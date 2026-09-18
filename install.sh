@@ -137,6 +137,40 @@ cp "$SRC_DIR/hooks/triage-classifier.sh" "$CLAUDE_CONFIG_DIR/hooks/triage-classi
 cp "$SRC_DIR/hooks/triage-rubric.txt" "$CLAUDE_CONFIG_DIR/hooks/triage-rubric.txt"
 chmod +x "$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh"
 
+# 記録の関門フック（commit時にグローバル§3の記録が入っているかを見る）。
+# トリアージ分類と違い**既定で有効**にするので、settings.json への登録までここで行う。
+# ユーザーのファイルを書き換えるので、控えを取り、読めない時は何もせず知らせる。
+cp "$SRC_DIR/hooks/commit-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
+chmod +x "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
+GUARD_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
+SETTINGS="$CLAUDE_CONFIG_DIR/settings.json"
+GUARD_REGISTERED=0
+register_record_guard() {
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "※ jqが無いため、記録の関門をsettings.jsonへ登録できませんでした。手で追記してください:" >&2
+    echo "   {\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"$GUARD_CMD\",\"timeout\":10}]}]}}" >&2
+    return 0
+  fi
+  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    echo "⚠ $SETTINGS がJSONとして読めません。記録の関門の登録を省きました。" >&2
+    return 0
+  fi
+  if jq -e --arg c "$GUARD_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
+       "$SETTINGS" >/dev/null 2>&1; then
+    GUARD_REGISTERED=1   # 登録済み（再installで二重に増やさない）
+    return 0
+  fi
+  cp "$SETTINGS" "$SETTINGS.bak"
+  jq --arg c "$GUARD_CMD" '.hooks = (.hooks // {})
+     | .hooks.PreToolUse = ((.hooks.PreToolUse // [])
+       + [{matcher:"Bash",hooks:[{type:"command",command:$c,timeout:10}]}])' \
+     "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+  GUARD_REGISTERED=2
+  echo "  - settings.jsonに記録の関門を登録しました（控え: $SETTINGS.bak）"
+}
+register_record_guard
+
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/hooks"
   cp "$SRC_DIR/hooks/codex-triage.sh" "$CODEX_HOME/hooks/codex-triage"
@@ -203,6 +237,11 @@ echo "  - skills/init-rules"
 echo "  - skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
 echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える）"
 echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
+if [ "$GUARD_REGISTERED" = 0 ]; then
+  echo "  - hooks/commit-record-guard.sh（コピーのみ。登録は上記の案内を参照）"
+else
+  echo "  - hooks/commit-record-guard.sh（commit時の記録の関門。既定で有効）"
+fi
 echo "  - tools/check-limits.sh（常時ロード上限の判定。§2 から参照）"
 if [ "$INSTALL_CODEX" = 1 ]; then
   echo "  - $CODEX_TARGET_MD（codex-rules ブロック）"
