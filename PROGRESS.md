@@ -10,9 +10,9 @@
 
 ## 次の一手 (Top 3)
 > REQUIREMENTS.md のバックログから直近の分だけを取り出す。
-1. 他PCでclaude-rulesの**cloneを取り直す**（2026-09-17に履歴を畳みリポを作り直したため。`git pull`は進まず、`reset --hard`では畳む前の版がそのPCに残る）。**消す前に`IMPROVEMENTS.md`への未pushの追記が無いか見る**（追記はclone内の正本に入る）。取り直したら`./install.sh`（symlinkの張り直しに必須）。quorumは`git pull && ./install.sh`。`settings.json`に分類フックが登録済みなら手で外す
-2. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ。置き場だけ揃ったタスクは改名だけの入口で回る）
-3. （余裕があれば）Codex側ルールの圧縮
+1. 他PCでclaude-rulesの**cloneを取り直す**（2026-09-17にリポを作り直したため。`git pull`は進まず、`reset --hard`では畳む前の版が残る）。**消す前に`IMPROVEMENTS.md`への未pushの追記を確認**。取り直したら`./install.sh`——**`settings.json`を書き換える**（関門3件の登録。告知が出る。止めるなら`--no-hook-register`）。入れたら`tools/check-record-guard.sh --repo <リポ>`を作業するリポで1回、**単独の呼び出しで**通す
+2. 記録の関門を数日回して、止まりすぎ・漏れ・誤判定を`IMPROVEMENTS.md`へ。特に**リモートの無いリポとpushしない運用**（pushの関門が効かず、後追いの通知だけが頼り）と、**編集とcommitを分ける運用が回るか**
+3. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ）
 
 ## 完了
 - [x] 2026-09-18 判定をpushの直前へ移した（commitは既にあるので書き方に依存せず正確・かつ止められる）。例外はコミットメッセージの`記録なし: <理由>`。配線の印で「入口が最後に呼ばれたのはいつか」が読める → [checkpoint](checkpoints/2026-09-18-pushの関門-判定を情報の揃う時点へ.md)
