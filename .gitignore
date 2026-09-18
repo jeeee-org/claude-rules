@@ -1,2 +1,5 @@
 # Python のテスト実行で生成されるキャッシュ（tools/tests/）
 __pycache__/
+
+# このPCだけのローカル指示（正本を編集するPCを1台に限るため、共有しない）
+CLAUDE.local.md
