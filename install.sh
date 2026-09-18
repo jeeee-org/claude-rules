@@ -12,19 +12,28 @@
 #      AGENTS.md 自体は残る。ここで省けるのは claude-rules 分だけ。
 # 複数PCへの事前配布を可能にするため、CLI未導入でも両設定ディレクトリを作る。
 # 新PCでは claude-rules -> quorum の順に install すると CLAUDE.md の並びが揃う。
+# **$CLAUDE_CONFIG_DIR/settings.json を書き換えます**（記録の関門フック2件を hooks へ登録。
+# 控えを settings.json.bak に取ります）。登録を止めるなら:
+#   ./install.sh --no-hook-register   （または CLAUDE_RULES_REGISTER_HOOKS=0 ./install.sh）
 set -euo pipefail
 
 INSTALL_CODEX="${CLAUDE_RULES_INSTALL_CODEX:-1}"
+REGISTER_HOOKS="${CLAUDE_RULES_REGISTER_HOOKS:-1}"
 for arg in "$@"; do
   case "$arg" in
     --no-codex) INSTALL_CODEX=0 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
-    *) echo "不明な引数: $arg（使えるのは --no-codex）" >&2; exit 2 ;;
+    --no-hook-register) REGISTER_HOOKS=0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register）" >&2; exit 2 ;;
   esac
 done
 case "$INSTALL_CODEX" in
   0|false|no|'') INSTALL_CODEX=0 ;;
   *) INSTALL_CODEX=1 ;;
+esac
+case "$REGISTER_HOOKS" in
+  0|false|no|'') REGISTER_HOOKS=0 ;;
+  *) REGISTER_HOOKS=1 ;;
 esac
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,18 +146,42 @@ cp "$SRC_DIR/hooks/triage-classifier.sh" "$CLAUDE_CONFIG_DIR/hooks/triage-classi
 cp "$SRC_DIR/hooks/triage-rubric.txt" "$CLAUDE_CONFIG_DIR/hooks/triage-rubric.txt"
 chmod +x "$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh"
 
-# 記録の関門フック（commit時にグローバル§3の記録が入っているかを見る）。
-# トリアージ分類と違い**既定で有効**にするので、settings.json への登録までここで行う。
-# ユーザーのファイルを書き換えるので、控えを取り、読めない時は何もせず知らせる。
+# 記録の関門（commit時にグローバル§3の記録が入っているかを見る）。
+#   入口 = PreToolUse。実行前に止められるが、書き込みとcommitが同じ呼び出しだと判定できない
+#   後追い = PostToolUse。止められないが、gitの履歴を見るので見逃しが残らない
+# トリアージ分類と違い**既定で有効**にするため、settings.json への登録までここで行う。
+# **ユーザーの設定ファイルを書き換えるので、事前に告げ、控えを取り、opt-outを用意する。**
 cp "$SRC_DIR/hooks/commit-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
-chmod +x "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
+cp "$SRC_DIR/hooks/commit-record-audit.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
+chmod +x "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
 GUARD_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
+AUDIT_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
 SETTINGS="$CLAUDE_CONFIG_DIR/settings.json"
 GUARD_REGISTERED=0
+
+register_hook() { # register_hook <PreToolUse|PostToolUse> <コマンド>
+  local event="$1" cmd="$2"
+  if jq -e --arg c "$cmd" --arg e "$event" \
+       '[.hooks[$e][]?.hooks[]?.command] | index($c)' "$SETTINGS" >/dev/null 2>&1; then
+    return 1   # 登録済み（再installで二重に増やさない）
+  fi
+  jq --arg c "$cmd" --arg e "$event" '.hooks = (.hooks // {})
+     | .hooks[$e] = ((.hooks[$e] // [])
+       + [{matcher:"Bash",hooks:[{type:"command",command:$c,timeout:10}]}])' \
+     "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+  return 0
+}
+
 register_record_guard() {
+  if [ "$REGISTER_HOOKS" = 0 ]; then
+    echo "※ settings.json への登録は省きました（--no-hook-register）。関門は効きません。" >&2
+    return 0
+  fi
   if ! command -v jq >/dev/null 2>&1; then
     echo "※ jqが無いため、記録の関門をsettings.jsonへ登録できませんでした。手で追記してください:" >&2
-    echo "   {\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"$GUARD_CMD\",\"timeout\":10}]}]}}" >&2
+    echo "   PreToolUse  → $GUARD_CMD" >&2
+    echo "   PostToolUse → $AUDIT_CMD" >&2
+    echo "   （どちらも matcher は \"Bash\"、timeout 10）" >&2
     return 0
   fi
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
@@ -156,18 +189,23 @@ register_record_guard() {
     echo "⚠ $SETTINGS がJSONとして読めません。記録の関門の登録を省きました。" >&2
     return 0
   fi
-  if jq -e --arg c "$GUARD_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
-       "$SETTINGS" >/dev/null 2>&1; then
-    GUARD_REGISTERED=1   # 登録済み（再installで二重に増やさない）
-    return 0
+  local added=0
+  if ! jq -e --arg c "$GUARD_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
+         "$SETTINGS" >/dev/null 2>&1 ||
+     ! jq -e --arg c "$AUDIT_CMD" '[.hooks.PostToolUse[]?.hooks[]?.command] | index($c)' \
+         "$SETTINGS" >/dev/null 2>&1; then
+    echo "※ 記録の関門を有効にするため、$SETTINGS のhooksへ登録します（控え: $SETTINGS.bak）。"
+    echo "   止めるなら: ./install.sh --no-hook-register"
+    cp "$SETTINGS" "$SETTINGS.bak"
   fi
-  cp "$SETTINGS" "$SETTINGS.bak"
-  jq --arg c "$GUARD_CMD" '.hooks = (.hooks // {})
-     | .hooks.PreToolUse = ((.hooks.PreToolUse // [])
-       + [{matcher:"Bash",hooks:[{type:"command",command:$c,timeout:10}]}])' \
-     "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
-  GUARD_REGISTERED=2
-  echo "  - settings.jsonに記録の関門を登録しました（控え: $SETTINGS.bak）"
+  register_hook PreToolUse "$GUARD_CMD" && added=1
+  register_hook PostToolUse "$AUDIT_CMD" && added=1
+  if [ "$added" = 1 ]; then
+    GUARD_REGISTERED=2
+    echo "  - settings.jsonに記録の関門を登録しました（入口=PreToolUse・後追い=PostToolUse）"
+  else
+    GUARD_REGISTERED=1
+  fi
 }
 register_record_guard
 
@@ -241,9 +279,10 @@ echo "  - skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
 echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える）"
 echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
 if [ "$GUARD_REGISTERED" = 0 ]; then
-  echo "  - hooks/commit-record-guard.sh（コピーのみ。登録は上記の案内を参照）"
+  echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh（コピーのみ。登録は上記の案内を参照）"
 else
-  echo "  - hooks/commit-record-guard.sh（commit時の記録の関門。既定で有効）"
+  echo "  - hooks/commit-record-guard.sh（入口の関門。PreToolUse）"
+  echo "  - hooks/commit-record-audit.sh（見逃しの後追い。PostToolUse）"
 fi
 echo "  - tools/check-limits.sh（常時ロード上限の判定。§2 から参照）"
 echo "  - tools/check-record-guard.sh（記録の関門の疎通確認）"
@@ -257,8 +296,9 @@ else
   echo "  - Codex 側はスキップ（CLAUDE_RULES_INSTALL_CODEX=0 / --no-codex）"
 fi
 echo ""
-echo "記録の関門は、登録しても発火するとは限りません（**リポ単位で割れる例**があり、条件は未特定）。"
-echo "**作業するリポで**確かめてください: $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh --repo <リポ>"
+echo "記録の関門が判定できるのは「編集は前の呼び出しで済ませ、この呼び出しはcommitだけ」の形です。"
+echo "効いているかは作業するリポで、**単独の呼び出しで**確かめてください:"
+echo "  $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh --repo <リポ>"
 echo ""
 echo "Claude Code を再起動するか /reload-skills を実行してください。"
 if [ "$INSTALL_CODEX" = 1 ]; then echo "Codex分類を使う場合: $CODEX_HOME/hooks/codex-triage [codex options] -- '<prompt>'"; fi

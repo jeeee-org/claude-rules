@@ -125,6 +125,40 @@ class GuardTest(unittest.TestCase):
         r = run_hook("git commit -F - <<'EOF'\n確認はCR_RECORD_GUARD_PROBE=1で行う\nEOF", self.repo)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_ヒアドキュメントの後ろのcommitも検出する(self):
+        """`<<`から後ろを全部切っていたため、この形が素通りしていた（2台で実測）"""
+        self.touch('app.py', 'x = 2\n')
+        cmd = ("cat >> app.py <<'EOF'\n# 追記\nEOF\n"
+               "git add -A && git commit -m x")
+        r = run_hook(cmd, self.repo)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('分けて', r.stderr)
+
+    def test_書き込みとcommitが同じ呼び出しなら判定せず分割を求める(self):
+        """PreToolUseの時点では書き込みが起きていないので、記録が入るか分からない"""
+        self.touch('app.py', 'x = 2\n')
+        for cmd in ("printf 'x\\n' > memo.txt && git add -A && git commit -m x",
+                    "cp a b; git commit -am x",
+                    "python3 write.py && git add -A && git commit -m x"):
+            with self.subTest(cmd=cmd):
+                r = run_hook(cmd, self.repo)
+                self.assertEqual(r.returncode, 2, cmd)
+                self.assertIn('分けてください', r.stderr)
+
+    def test_変更なしから一気に作る形も止まる(self):
+        """cleanなリポでは「変更なし」で通っていた。書き込みの気配で止める"""
+        clean = self.other_repo()   # 作業ツリーはclean
+        cmd = f"printf 'x\\n' > {clean}/app.py && git -C {clean} add -A && git -C {clean} commit -m x"
+        r = run_hook(cmd, self.repo)
+        self.assertEqual(r.returncode, 2)
+
+    def test_差し戻しの文面はコマンド全体が実行されないことを言う(self):
+        """「commitだけ止まった」と読むと、次のcommitがno changesで空振りする"""
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook('git add -A && git commit -m x', self.repo)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('1行も実行されていません', r.stderr)
+
     # --- 通す ---
 
     def test_git_Cの先に記録があれば通る(self):
@@ -139,6 +173,13 @@ class GuardTest(unittest.TestCase):
         """変数展開などで行き先が分からない時は、別のリポを見て誤るより通す"""
         self.touch('app.py', 'x = 2\n')
         r = run_hook('git -C "$d" commit -am x', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_git_addだけなら書き込み扱いにしない(self):
+        """addはディスク上の変更を載せるだけ。判定できるので、記録があれば通す"""
+        self.touch('app.py', 'x = 2\n')
+        self.touch('checkpoints/2026-01-03-対応-記録.md', '# ログ\n')
+        r = run_hook('git add -A && git commit -q -F - <<\'EOF\'\n件名\nEOF', self.repo)
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_checkpointを足していれば通る(self):
@@ -206,6 +247,78 @@ class GuardTest(unittest.TestCase):
 
     def test_変更が何も無ければ黙る(self):
         self.assertEqual(run_hook('git commit -am x', self.repo).returncode, 0)
+
+
+class AuditTest(unittest.TestCase):
+    """hooks/commit-record-audit.sh — できてしまったcommitを後から見る網"""
+
+    AUDIT = Path(__file__).resolve().parents[2] / 'hooks' / 'commit-record-audit.sh'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name) / 'repo'
+        self.repo.mkdir()
+        git(self.repo, 'init', '-b', 'main')
+        git(self.repo, 'config', 'user.email', 't@example.com')
+        git(self.repo, 'config', 'user.name', 'test')
+        (self.repo / 'PROGRESS.md').write_text('# 進捗\n', encoding='utf-8')
+        git(self.repo, 'add', '-A')
+        git(self.repo, 'commit', '-m', '初期')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def commit(self, name, text='x\n'):
+        p = self.repo / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding='utf-8')
+        git(self.repo, 'add', '-A')
+        git(self.repo, 'commit', '-m', 'あとで')
+
+    def run_audit(self, command):
+        payload = json.dumps({'tool_name': 'Bash', 'tool_input': {'command': command},
+                              'cwd': str(self.repo)})
+        return subprocess.run(['bash', str(self.AUDIT)], input=payload, text=True,
+                              capture_output=True)
+
+    def test_記録の無いcommitができていたら知らせる(self):
+        self.commit('app.py')
+        r = self.run_audit('cat > app.py <<EOF\nx\nEOF\ngit add -A && git commit -m x')
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('後追い', r.stderr)
+        self.assertIn(str(self.repo), r.stderr)
+
+    def test_記録が入っていれば黙る(self):
+        self.commit('checkpoints/2026-01-02-対応-記録.md', '# ログ\n')
+        r = self.run_audit('git add -A && git commit -m x')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_commitを含まない呼び出しは見ない(self):
+        self.commit('app.py')
+        self.assertEqual(self.run_audit('ls -la').returncode, 0)
+
+    def test_古いcommitは蒸し返さない(self):
+        self.commit('app.py')
+        env_cmd = ['bash', '-c',
+                   f'CR_AUDIT_FRESH_SECONDS=0 bash {self.AUDIT}']
+        payload = json.dumps({'tool_name': 'Bash', 'tool_input': {'command': 'git commit -m x'},
+                              'cwd': str(self.repo)})
+        r = subprocess.run(env_cmd, input=payload, text=True, capture_output=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_記録の方式を使っていないリポでは黙る(self):
+        plain = Path(self.tmp.name) / 'plain'
+        plain.mkdir()
+        git(plain, 'init', '-b', 'main')
+        git(plain, 'config', 'user.email', 't@example.com')
+        git(plain, 'config', 'user.name', 'test')
+        (plain / 'app.py').write_text('x\n', encoding='utf-8')
+        git(plain, 'add', '-A')
+        git(plain, 'commit', '-m', '初期')
+        payload = json.dumps({'tool_name': 'Bash', 'tool_input': {'command': 'git commit -m x'},
+                              'cwd': str(plain)})
+        r = subprocess.run(['bash', str(self.AUDIT)], input=payload, text=True, capture_output=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
 
 class CheckGuardTest(unittest.TestCase):

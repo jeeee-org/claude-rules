@@ -4,22 +4,33 @@
 # checkpoints/）が一緒に変わっているかを見る。1つも無ければcommitを止めて差し戻す。
 # グローバル§3「タスク完了時（必須）」の抜けを、自己申告から独立して捕まえるため。
 #
+# **判定できるのは「この呼び出しはcommitだけ」という形に限られる。** PreToolUseは
+# コマンドの実行前に走るので、同じ呼び出しの中でファイルを書いてからcommitする形では、
+# その書き込みがまだ起きていない（2台の実測で、記録なしのcommitが素通りした。
+# IMPROVEMENTS 2026-09-18）。そこで**書き込みとcommitが同じ呼び出しにある時は、
+# 判定せずに「分けて打つ」ことを求める**。git addだけなら、対象の変更は既にディスクにある。
+#
 # 設計方針:
 #  - fail-open。判定できない時（jqもpython3も無い・gitの外・記録の5点を持たないリポ・
 #    見るリポが決められない）は黙って通す。**別のリポを見て誤るより通す。**
 #  - 禁止ではなく、意識した判断の強制。要らない時は理由を述べて
 #    CR_SKIP_RECORD_GUARD=1 を付けて通す（コマンドに残るので、あとから見て分かる）。
 #  - CLAUDE.mdは数えない。ルールだけを直したcommitも記録は要る。
+#  - 止めた時は**コマンド全体が実行されない**。差し戻しの文面でそれを必ず言う
+#    （準備まで済んだと誤解すると、次のcommitが空振りする）。
 # 登録はclaude-rules/install.shが行う（~/.claude/settings.json のPreToolUse）。
-# **登録しても発火するとは限らず、割れ方はリポ単位**（同じセッションの同じ階層で、
-# 一方のリポは止まり他方は通る。条件は未特定。IMPROVEMENTS 2026-09-18）。
-# **作業するリポごとに** tools/check-record-guard.sh で確かめる。
+# 見逃しの後追いは hooks/commit-record-audit.sh（PostToolUse）。
+# 効いているかは tools/check-record-guard.sh で、**作業するリポごとに**確かめる。
 set -u
 
 RECORD_RE='(^|/)(REQUIREMENTS|PROGRESS|NOTES)\.md$|(^|/)checkpoints/'
 # コマンド中のパス（"..." / '...' / 素の語）
 PATH_PAT='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
 GIT_COMMIT_RE='git[[:space:]]+((-C|-c)[[:space:]]+'"$PATH_PAT"'[[:space:]]+)*commit'
+# ファイルを書く気配。これがcommitと同じ呼び出しにあると、PreToolUseでは中身が見えない
+# cat/printf/echoは単体では書かない（書く時はリダイレクトが付くので、その形で捕まえる）。
+# ヒアドキュメントの記号そのものは入れない——`git commit -F - <<'EOF'`はメッセージを渡すだけ
+WRITE_RE='(^|[;&|(]|&&)[[:space:]]*(tee|touch|cp|mv|install|python3?|perl|ruby|node|bash|sh|zsh|awk|rsync|dd)[[:space:]]|[^0-9&>]>>?[[:space:]]*[^&[:space:]]|[[:space:]]sed[[:space:]]+-i'
 
 input=$(cat) || exit 0
 [ -n "$input" ] || exit 0
@@ -41,14 +52,42 @@ print(d if isinstance(d,str) else "")' "$1" <<<"$input" 2>/dev/null
 unquote() { sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//"; }
 expand_home() { case "$1" in '~'|'~/'*) printf '%s' "$HOME${1#\~}" ;; *) printf '%s' "$1" ;; esac; }
 
+# ヒアドキュメントの**本体だけ**を落とす。`<<`から後ろを全部切ると、その後ろにある
+# commitが検出から漏れる（記録なしのcommitが素通りした原因。IMPROVEMENTS 2026-09-18）
+strip_heredoc_bodies() {
+  awk '
+    function delim_of(line,   tmp, d, delim) {
+      tmp = line
+      gsub(/<<</, "\001", tmp)          # ヒアストリングは対象外
+      delim = ""
+      while (match(tmp, /<<-?[ \t]*("[^"]+"|\047[^\047]+\047|[A-Za-z_][A-Za-z0-9_]*)/)) {
+        d = substr(tmp, RSTART, RLENGTH)
+        sub(/^<<-?[ \t]*/, "", d)
+        gsub(/["\047]/, "", d)
+        delim = d                        # 同じ行に複数あれば最後のもの
+        tmp = substr(tmp, RSTART + RLENGTH)
+      }
+      return delim
+    }
+    {
+      if (skip != "") {                  # 本体の中：デリミタ行まで捨てる
+        t = $0; sub(/^[ \t]+/, "", t)
+        if (t == skip) skip = ""
+        next
+      }
+      print
+      skip = delim_of($0)
+    }
+  '
+}
+
 [ "$(read_json '.tool_name')" = "Bash" ] || exit 0
 cmd=$(read_json '.tool_input.command')
 [ -n "$cmd" ] || exit 0
 
-# ヒアドキュメントの中身は見ない。**印の判定もここから行う**——commitメッセージや
-# 文書の本文に印の名前を書いただけで、関門が外れたり止まったりしないように
-# （実際に、このフックを説明する文書を書いた時に誤作動した）
-head_part=${cmd%%<<*}
+# 以後の判定は、ヒアドキュメントの本体を除いた部分に対して行う。印の判定も同じで、
+# 文書やcommitメッセージの本文に印の名前を書いただけでは効かないようにする
+head_part=$(strip_heredoc_bodies <<<"$cmd")
 
 # 疎通確認（tools/check-record-guard.sh の②）。**呼ばれていれば必ず止める**ので、
 # 「このリポでフックが起動しているか」だけを見られる。リポの状態も判定も通らない。
@@ -66,13 +105,31 @@ case "$head_part" in *CR_SKIP_RECORD_GUARD*) exit 0 ;; esac
 # 履歴を作らない・作り直すだけのものは対象外
 case "$head_part" in *--dry-run*|*--amend*) exit 0 ;; esac
 
+# 書き込みとcommitが同じ呼び出しにある形は、判定できない（書き込みはまだ起きていない）
+if grep -Eq "$WRITE_RE" <<<"$head_part"; then
+  cat >&2 <<'MSG'
+記録の関門: この呼び出しは、ファイルを書くのとcommitを一度に行っています。
+PreToolUseはコマンドの実行前に走るので、書き込みがまだ起きておらず、記録が入るかを
+判定できません（この形で記録なしのcommitが素通りしていました）。
+
+**編集の呼び出しとcommitの呼び出しを分けてください。**
+  1回目: ファイルを書く（記録もここで書く）
+  2回目: git add と git commit だけ
+
+このコマンドは**1行も実行されていません**。同じ呼び出しで準備していた分も、
+やり直しになります。判定が要らないと分かっている場合だけ、理由を1行述べて
+コマンドの先頭にCR_SKIP_RECORD_GUARD=1を付けて通してください。
+MSG
+  exit 2
+fi
+
 # 判定するリポを決める。実際のgitと同じ順で解く:
 #   セッションのcwd → 先頭のcdの行き先 → git -C の指定（-Cが最優先）
 cwd=$(read_json '.cwd')
 [ -n "$cwd" ] || cwd=$PWD
 
-case "$cmd" in
-  cd\ *) target=$(sed -e 's/&&.*//' -e 's/;.*//' <<<"${cmd#cd }" | unquote)
+case "$head_part" in
+  cd\ *) target=$(sed -e 's/&&.*//' -e 's/;.*//' <<<"${head_part#cd }" | unquote)
          # evalしない（コマンド文字列をそのまま展開すると、ここが実行口になる）
          target=$(expand_home "$target")
          [ -n "$target" ] && [ -d "$target" ] && cwd=$target ;;
@@ -95,7 +152,7 @@ root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$root" ] || exit 0
 
 status=$(git -c core.quotepath=false -C "$root" status --porcelain -uall 2>/dev/null) || exit 0
-[ -n "$status" ] || exit 0
+[ -n "$status" ] || exit 0   # 何も変わっていない＝commitするものが無い（gitが断る）
 changed=$(sed -e 's/^...//' -e 's/.* -> //' <<<"$status")
 
 # このリポが記録の方式を使っているか（使っていないPJでは何も言わない）
@@ -111,7 +168,8 @@ cat >&2 <<MSG
 グローバル§3「タスク完了時（必須）」= 作業ログをその作業のcheckpointへ、PROGRESS.mdの
 完了と次の一手、要件・スコープの変化をREQUIREMENTS.mdへ、学びをNOTES.mdへ。
 
-書いてからcommitし直すか、この作業に記録が要らない理由を1行述べたうえで、
-コマンドの先頭にCR_SKIP_RECORD_GUARD=1を付けて通してください。
+このコマンドは**1行も実行されていません**（git addも走っていません）。記録を書いて
+から、準備の分ごと打ち直してください。この作業に記録が要らない場合は、理由を1行
+述べたうえでコマンドの先頭にCR_SKIP_RECORD_GUARD=1を付けて通してください。
 MSG
 exit 2
