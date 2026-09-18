@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""既存PJのcheckpointを、リポ直下の checkpoints/YYYY-MM-DD-作業内容.md の形へ揃える。
+"""既存PJのcheckpointを、リポ直下の checkpoints/YYYY-MM-DD-作業名-中身.md の形へ揃える。
 
-グローバル §1・§2（2026-09-12 改訂）への追従用。作業内容の名前は判断が要るのでコマンドは決めない。
+グローバル §1・§2（2026-09-18 改訂）への追従用。名前は判断が要るのでコマンドは決めない。
+作業名は REQUIREMENTS.md の進行中の作業カードの見出しと同じ語にする（同じ作業の複数日ぶんを
+checkpoints/*-作業名-* で一括して引くため）。1日で終わった過去分は1語のままでよい。
 対応表（TSV）を作り、人かClaudeが埋めてから apply する。ADRの仕分けも対象外。
 
 移行は「移動」と「命名」の2つの作業で、前者だけ済んだ中間状態（docs/checkpoints/ から移してあるが
@@ -31,7 +33,8 @@
     docs/checkpoints/ に属するとみなす。別のPJのものなら触らない（同じ日付でも別の文書）。
     tasks/<name>/docs/checkpoints/… のように場所付きで書かれたものは、その場所そのものとして扱う
 
-対応表は1行に「日付<TAB>作業内容」。作業内容は日本語の短い語で、空白と / \\ : * ? " < > | は使えない。
+対応表は1行に「日付<TAB>名前」。名前は「作業名-中身」（どちらも日本語の短い語）で、
+空白と / \\ : * ? " < > | は使えない。
 # で始まる行は読み飛ばす。exit は 0=問題なし / 1=check で問題あり / 2=中止（何も変えていない）。
 """
 import argparse
@@ -172,7 +175,7 @@ def announce(ctx, dated, left):
 
 
 def guess_name(path):
-    """見出しから作業内容の候補を拾う。決めるのは人（空でもよい）"""
+    """見出しから名前の候補を拾う。決めるのは人（空でもよい）"""
     for line in path.read_text(encoding='utf-8').splitlines():
         m = re.match(r'^#{1,3}\s+(.+)', line)
         if not m:
@@ -191,14 +194,14 @@ def load_names(path, dated, ctx):
             continue
         parts = line.split('\t')
         if len(parts) != 2:
-            raise Abort(f'{path}:{n}: 「日付<TAB>作業内容」の形になっていない')
+            raise Abort(f'{path}:{n}: 「日付<TAB>名前」の形になっていない')
         date, name = parts[0].strip(), parts[1].strip()
         if not DATE_RE.match(date):
             raise Abort(f'{path}:{n}: 日付の形ではない: {date}')
         if not name:
-            raise Abort(f'{path}:{n}: {date} の作業内容が空')
+            raise Abort(f'{path}:{n}: {date} の名前が空')
         if BAD_NAME_RE.search(name):
-            raise Abort(f'{path}:{n}: {date} の作業内容に使えない文字がある（空白と / \\ : * ? " < > |）: {name}')
+            raise Abort(f'{path}:{n}: {date} の名前に使えない文字がある（空白と / \\ : * ? " < > |）: {name}')
         if date in names:
             raise Abort(f'{path}:{n}: {date} が2回ある')
         names[date] = name
@@ -254,7 +257,7 @@ def retitle(text, date, name):
 def cmd_plan(ctx, left, out):
     dated, done, others = old_checkpoints(ctx)
     announce(ctx, dated, left)
-    text = '# 日付<TAB>作業内容。候補は見出しから拾っただけなので直す（空白と / などは使えない）\n'
+    text = '# 日付<TAB>作業名-中身。候補は見出しから拾っただけなので直す（空白と / などは使えない）\n'
     text += ''.join(f'{p.stem}\t{guess_name(p)}\n' for p in dated)
     if out:
         Path(out).write_text(text, encoding='utf-8')

@@ -108,7 +108,7 @@ class MigrateCheckpointsTest(unittest.TestCase):
         cases = [
             ({'2026-01-01': '立ち上げ'}, '対応表に無い日付'),
             ({**NAMES, '2026-01-02': 'ADR の整理'}, '使えない文字'),
-            ({**NAMES, '2026-01-02': ''}, '作業内容が空'),
+            ({**NAMES, '2026-01-02': ''}, '名前が空'),
             ({**NAMES, '2026-01-03': '余分'}, '無い日付が対応表にある'),
         ]
         for names, message in cases:
