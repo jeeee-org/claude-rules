@@ -104,7 +104,7 @@ python3 "$clone/tools/check-moved-lines.py" --help
   ```bash
   python3 "$clone/tools/check-moved-lines.py" --from HEAD:NOTES.md NOTES.md REQUIREMENTS.md checkpoints/*.md
   ```
-  - **出力の冒頭の「比較元」を必ず見る。** `HEAD:<file>`は`--repo`（既定はカレント）から解決するので、
+  - **出力の冒頭の「比較元」を必ず見る。**`HEAD:<file>`は`--repo`（既定はカレント）から解決するので、
     モノレポのタスクで走らせる時は、そのPJのディレクトリで実行するか`--repo`を渡す。取り違えると
     関係の無い差分が大量に出て、一見「何十行も落ちた」ように見える。
   - 出た行が「書き直した・置き換えた・言い換えて移した」行だけであることを、1行ずつ確かめる。
