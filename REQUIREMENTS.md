@@ -2,7 +2,7 @@
 
 > 決めたこと（要求・方針・作業・予定）とスコープ、未決事項。**進み具合は PROGRESS.md**（計画の本体を二重に持たない）。決まった／変わったら即更新し、**片付いたら消す**（経緯は checkpoints/ に残る）。
 
-最終更新: 2026-09-18
+最終更新: 2026-09-19
 
 ## 目的・スコープ
 - Claude Code / Codex のグローバル共通ルール（`rules/*.md`）と`init-rules`スキルを、複数PCへ`install.sh`＋マーカーブロック方式で配布・同期する。
@@ -23,3 +23,4 @@
 ## 未決事項
 - [ ] 常時トリアージ規則を廃止した今、`hooks/triage-classifier.sh`・`hooks/triage-rubric.txt`・`skills/codex-triage/`（opt-inの分類ツール）を配布し続けるか。
 - [ ] `migrate-rules`のCodex版を作るか（2026-09-14にClaude版だけ作った。Codexをメインに使うPJで同じ移行の需要があるか未確認）。
+- [ ] 2026-09-19に決めた「カードに収まらない要求の置き場」（グローバル§4・`init-rules`）を、Codex側（`rules/codex-global-rules.md`・`skills/codex-init-rules/SKILL.md`）へも広げるか。
