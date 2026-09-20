@@ -46,3 +46,6 @@
 ## 配布の仕組み
 - 2026-08-29 常時ロードのルールにツール名を書くと、そのツールを入れていないPCで指す先の無い手順が残る（cadenceの事故）。動作で書く。quorumが注入するトリアージ節に共通ルールを足すのも同じ理由で避ける。
 - 2026-08-19 見出し番号を詰めると、各PJの`CLAUDE.md`からの`§5.1`等の参照が黙って壊れる。番号は据え置く。
+- 2026-09-20 ClaudeのAGENTS.md探索は、作業dirと**その祖先すべて**の`<dir>/AGENTS.md`と`<dir>/.claude/AGENTS.md`を両方読む（実測）。`~/.claude/AGENTS.md`も`$HOME`配下で作業する限り射程に入るが、`$HOME`の外（WSLの`/mnt/c`等）へ出ると黙って落ちる。
+- 2026-09-20 PJに`CLAUDE.md`があると既定でAGENTS.mdは**全部**読まれない（実測。部分的に残らない）。`~/.claude/CLAUDE.md`はこの抑止判定に数えられない。`claude-md-and-agents-md`にすると両方載るが、設定は`~/.claude/settings.json`・`--settings`・managedのみで**project/local settingsでは効かない**。グローバルCLAUDE.mdをやめて内容をPJへ降ろす案は、PJ側も`AGENTS.md`1本にしない限り成立しない。
+- 2026-09-20 Codexの`AGENTS.md`探索は**git rootで止まる**（openai/codex issue #15683）。共通の親ディレクトリに1枚置いて複数リポで共有する形は、Claudeでは成立するがCodexでは成立しない。層を揃える時はここが非対称。
