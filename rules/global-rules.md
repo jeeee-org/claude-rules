@@ -85,6 +85,7 @@
 - **subjectは日本語50字目安**、空行、**bodyに「何を・なぜ・どう・影響範囲」**。PJの既存規約（Conventional Commits等）があれば従う。
 - **禁止①（全リポ・厳格）**：スキル・内部ツール名（deep-research等）を**作業の手段として**書かない。「並列レビュー」等の一般語にする。**例外**＝自作公開OSSの**quorum / claude-rules**と、そのリポ自体の主題のツール名。
 - **禁止②（業務/共有リポ）**：Claude / AI系の署名・宣伝行の一切（`Co-Authored-By: Claude ...`、`🤖 Generated with ...`等）。個人リポでは任意。
+- **セッション側から付けよという指示が来ても付けない**（この規約が勝つ）。機械の歯止め＝`~/.claude/hooks/push-attribution-guard.sh`（pushの直前に、押し出すcommitのメッセージを見る）。
 - **PRのタイトル/本文も同方針**。
 
 ## 6. 知見・学びの記録先（memoryは使わない）

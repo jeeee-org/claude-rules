@@ -32,6 +32,8 @@ GIT_COMMIT_RE='git[[:space:]]+((-C|-c)[[:space:]]+'"$PATH_PAT"'[[:space:]]+)*com
 # ファイルを書く気配。これがcommitと同じ呼び出しにあると、PreToolUseでは中身が見えない
 # cat/printf/echoは単体では書かない（書く時はリダイレクトが付くので、その形で捕まえる）。
 # ヒアドキュメントの記号そのものは入れない——`git commit -F - <<'EOF'`はメッセージを渡すだけ
+# **判定は引用符の中身を落としてから行う**（strip_quoted_args）。落とさないと、commit
+# メッセージの中の`<...@...>`がリダイレクトに見える（IMPROVEMENTS 2026-09-20）
 WRITE_RE='(^|[;&|(]|&&)[[:space:]]*(tee|touch|cp|mv|install|python3?|perl|ruby|node|bash|sh|zsh|awk|rsync|dd)[[:space:]]|[^0-9&>]>>?[[:space:]]*[^&[:space:]]|[[:space:]]sed[[:space:]]+-i'
 
 input=$(cat) || exit 0
@@ -83,6 +85,33 @@ strip_heredoc_bodies() {
   '
 }
 
+# 引用符（"…" / '…'）の**中身だけ**を落とす。記号は残すので語の切れ目は変わらない。
+# リダイレクトの検出が、commitメッセージの中の記号を拾ってしまうのを防ぐ——
+# `git commit -m "…<noreply@anthropic.com>" && git push` の `m>` と閉じ引用符が
+# `[^0-9&>]>>?[[:space:]]*[^&[:space:]]` に当たっていた（IMPROVEMENTS 2026-09-20）。
+# **誤検知そのものより、逃げ道が問題だった**——止められた側は-mをやめて-Fファイルへ回り、
+# そのcommitは記録の関門の目を素通りした。関門は、外し方を教える形で外れてはいけない。
+# 引用の状態は行をまたいで持ち越す（-mの本文は複数行になる）。
+strip_quoted_args() {
+  awk '
+    {
+      out = ""; n = length($0); i = 1
+      while (i <= n) {
+        c = substr($0, i, 1)
+        if (q == "") {
+          if (c == "\\") { out = out c; i += 2; continue }   # \X は展開されない1文字
+          if (c == "\"" || c == "\047") { q = c; out = out c; i++; continue }
+          out = out c; i++; continue
+        }
+        if (q == "\"" && c == "\\") { i += 2; continue }     # "…" の中の \" は閉じない
+        if (c == q) { q = ""; out = out c; i++; continue }
+        i++                                                 # 引用の中身は落とす
+      }
+      print out
+    }
+  '
+}
+
 [ "$(read_json '.tool_name')" = "Bash" ] || exit 0
 # 呼ばれた印。配線が生きているかを、手で試さなくても観測値として読めるようにする
 { date +%s > "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.record-guard-seen"; } 2>/dev/null || true
@@ -111,7 +140,7 @@ case "$head_part" in *CR_SKIP_RECORD_GUARD*) exit 0 ;; esac
 case "$head_part" in *--dry-run*|*--amend*) exit 0 ;; esac
 
 # 書き込みとcommitが同じ呼び出しにある形は、判定できない（書き込みはまだ起きていない）
-if grep -Eq "$WRITE_RE" <<<"$head_part"; then
+if grep -Eq "$WRITE_RE" <<<"$(strip_quoted_args <<<"$head_part")"; then
   cat >&2 <<'MSG'
 記録の関門: この呼び出しは、ファイルを書くのとcommitを一度に行っています。
 PreToolUseはコマンドの実行前に走るので、書き込みがまだ起きておらず、記録が入るかを

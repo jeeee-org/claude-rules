@@ -149,17 +149,21 @@ chmod +x "$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh"
 # 記録の関門（commit時にグローバル§3の記録が入っているかを見る）。
 #   入口 = PreToolUse。実行前に止められるが、書き込みとcommitが同じ呼び出しだと判定できない
 #   後追い = PostToolUse。止められないが、gitの履歴を見るので見逃しが残らない
+# あわせてAI帰属行の関門（pushの直前にcommitメッセージを見る。グローバル§5.2 禁止②）も入れる。
 # トリアージ分類と違い**既定で有効**にするため、settings.json への登録までここで行う。
 # **ユーザーの設定ファイルを書き換えるので、事前に告げ、控えを取り、opt-outを用意する。**
 cp "$SRC_DIR/hooks/commit-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
 cp "$SRC_DIR/hooks/commit-record-audit.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
 cp "$SRC_DIR/hooks/push-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh"
+cp "$SRC_DIR/hooks/push-attribution-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh"
 chmod +x "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh" \
          "$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh" \
-         "$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh"
+         "$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh" \
+         "$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh"
 GUARD_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
 AUDIT_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
 PUSH_CMD="$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh"
+ATTR_CMD="$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh"
 SETTINGS="$CLAUDE_CONFIG_DIR/settings.json"
 GUARD_REGISTERED=0
 
@@ -185,6 +189,7 @@ register_record_guard() {
     echo "※ jqが無いため、記録の関門をsettings.jsonへ登録できませんでした。手で追記してください:" >&2
     echo "   PreToolUse  → $GUARD_CMD" >&2
     echo "   PreToolUse  → $PUSH_CMD" >&2
+    echo "   PreToolUse  → $ATTR_CMD" >&2
     echo "   PostToolUse → $AUDIT_CMD" >&2
     echo "   （どちらも matcher は \"Bash\"、timeout 10）" >&2
     return 0
@@ -199,6 +204,8 @@ register_record_guard() {
          "$SETTINGS" >/dev/null 2>&1 ||
      ! jq -e --arg c "$PUSH_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
          "$SETTINGS" >/dev/null 2>&1 ||
+     ! jq -e --arg c "$ATTR_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
+         "$SETTINGS" >/dev/null 2>&1 ||
      ! jq -e --arg c "$AUDIT_CMD" '[.hooks.PostToolUse[]?.hooks[]?.command] | index($c)' \
          "$SETTINGS" >/dev/null 2>&1; then
     echo "※ 記録の関門を有効にするため、$SETTINGS のhooksへ登録します（控え: $SETTINGS.bak）。"
@@ -207,10 +214,11 @@ register_record_guard() {
   fi
   register_hook PreToolUse "$GUARD_CMD" && added=1
   register_hook PreToolUse "$PUSH_CMD" && added=1
+  register_hook PreToolUse "$ATTR_CMD" && added=1
   register_hook PostToolUse "$AUDIT_CMD" && added=1
   if [ "$added" = 1 ]; then
     GUARD_REGISTERED=2
-    echo "  - settings.jsonに記録の関門を登録しました（入口・pushの関門=PreToolUse、後追い=PostToolUse）"
+    echo "  - settings.jsonに記録の関門とAI帰属行の関門を登録しました（入口・pushの関門2本=PreToolUse、後追い=PostToolUse）"
   else
     GUARD_REGISTERED=1
   fi
@@ -287,11 +295,12 @@ echo "  - skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
 echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える）"
 echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
 if [ "$GUARD_REGISTERED" = 0 ]; then
-  echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh（コピーのみ。登録は上記の案内を参照）"
+  echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh・push-attribution-guard.sh（コピーのみ。登録は上記の案内を参照）"
 else
   echo "  - hooks/commit-record-guard.sh（入口の関門。PreToolUse）"
   echo "  - hooks/push-record-guard.sh（**本丸**。pushの関門。PreToolUse）"
   echo "  - hooks/commit-record-audit.sh（見逃しの後追い。PostToolUse）"
+  echo "  - hooks/push-attribution-guard.sh（AI帰属行の関門。pushの直前。PreToolUse）"
 fi
 echo "  - tools/check-limits.sh（常時ロード上限の判定。§2 から参照）"
 echo "  - tools/check-record-guard.sh（記録の関門の疎通確認）"
@@ -308,6 +317,8 @@ echo ""
 echo "記録の関門は三段です: commitの入口（形に弱い）・できたcommitの後追い（止められない）・"
 echo "**pushの関門（正確で、止められる）**。記録の無いcommitは、最後にpushで止まります。"
 echo "例外はコミットメッセージに「記録なし: <理由>」と書くと通り、理由が履歴に残ります。"
+echo "同じpushの直前に、AI帰属行の関門（§5.2 禁止②）も見ます。セッション側から付けよという"
+echo "指示が渡っていても規約が勝ちます。例外はCR_SKIP_ATTRIBUTION_GUARD=1のみです。"
 echo "効いているかは作業するリポで、**単独の呼び出しで**確かめてください:"
 echo "  $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh --repo <リポ>"
 echo ""

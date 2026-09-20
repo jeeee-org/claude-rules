@@ -175,6 +175,37 @@ class GuardTest(unittest.TestCase):
         r = run_hook('git -C "$d" commit -am x', self.repo)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_引用符の中の記号はリダイレクトに数えない(self):
+        """`-m "…<…@…>"`の`m>`と閉じ引用符をリダイレクトと読んでいた（2026-09-20）。
+        止められた側は-mをやめて-Fファイルへ回り、そのcommitは関門を素通りした——
+        誤検知が逃げ道を作り、逃げ道が穴になる。"""
+        self.touch('app.py', 'x = 2\n')
+        self.touch('checkpoints/2026-01-03-対応-記録.md', '# ログ\n')
+        cmd = ('git add -A && git commit -m "着手宣言\n\n'
+               'Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>" '
+               '&& git push')
+        r = run_hook(cmd, self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_複数行のメッセージでも引用の中は落とす(self):
+        """-mの本文は改行を含む。引用の状態を行ごとに戻すと片側しか落ちない"""
+        self.touch('app.py', 'x = 2\n')
+        self.touch('checkpoints/2026-01-03-対応-記録.md', '# ログ\n')
+        cmd = ('git add -A && git commit -m "件名\n\n'
+               '出力はlog.txt > へ寄せた\n<a@example.com>"')
+        r = run_hook(cmd, self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_引用の外の本物のリダイレクトは見逃さない(self):
+        """引用の中身を落としても、記号と語の切れ目は残す"""
+        self.touch('app.py', 'x = 2\n')
+        for cmd in ('echo "x" > memo.txt && git add -A && git commit -m "件名"',
+                    'printf "x" >> "memo.txt" && git commit -am "件名"'):
+            with self.subTest(cmd=cmd):
+                r = run_hook(cmd, self.repo)
+                self.assertEqual(r.returncode, 2, cmd)
+                self.assertIn('分けて', r.stderr)
+
     def test_git_addだけなら書き込み扱いにしない(self):
         """addはディスク上の変更を載せるだけ。判定できるので、記録があれば通す"""
         self.touch('app.py', 'x = 2\n')
