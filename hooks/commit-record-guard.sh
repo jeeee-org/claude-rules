@@ -185,9 +185,15 @@ fi
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$root" ] || exit 0
 
-status=$(git -c core.quotepath=false -C "$root" status --porcelain -uall 2>/dev/null) || exit 0
-[ -n "$status" ] || exit 0   # 何も変わっていない＝commitするものが無い（gitが断る）
-changed=$(sed -e 's/^...//' -e 's/.* -> //' <<<"$status")
+# -zで読む。-z無しのporcelainは空白を含むパスを引用符で囲み、RECORD_REの(^|/)に掛からない
+# （core.quotepathは非ASCIIだけの制御で、空白の引用は止まらない）。
+# -zの改名はXY newの次に元の名前が別の要素で来るので、元の名前は読み捨てる
+changed=""
+while IFS= read -r -d '' entry; do
+  changed+="${entry:3}"$'\n'
+  case ${entry:0:1} in R|C) IFS= read -r -d '' _ ;; esac
+done < <(git -C "$root" status --porcelain -z -uall 2>/dev/null)
+[ -n "$changed" ] || exit 0   # 何も変わっていない＝commitするものが無い（gitが断る）
 
 # このリポが記録の方式を使っているか（使っていないPJでは何も言わない）
 git -c core.quotepath=false -C "$root" ls-files 2>/dev/null | grep -Eq "$RECORD_RE" ||

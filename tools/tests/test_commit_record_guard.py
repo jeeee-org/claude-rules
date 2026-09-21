@@ -225,6 +225,33 @@ class GuardTest(unittest.TestCase):
         r = run_hook('git add -A && git commit -m x', self.repo)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_空白を含むパスのcheckpointでも通る(self):
+        # -z無しのporcelainは空白入りのパスを引用符で囲み、判定から漏れていた
+        self.touch('app.py', 'x = 2\n')
+        self.touch('checkpoints/2026-01-02-空白 入り-確認.md', '# ログ\n')
+        r = run_hook('git add -A && git commit -m x', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_空白を含むディレクトリの下の記録でも通る(self):
+        self.touch('my task/app.py', 'x = 2\n')
+        self.touch('my task/PROGRESS.md', '# 進捗\n')
+        r = run_hook('git add -A && git commit -m x', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_空白を含む名前への改名は新しい名前で判定する(self):
+        git(self.repo, 'mv', 'checkpoints/2026-01-01-初期構成-立ち上げ.md',
+            'checkpoints/2026-01-01-初期 構成-立ち上げ.md')
+        r = run_hook('git commit -m x', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_記録を外へ改名しただけでは通らない(self):
+        # 改名の元の名前は-zでは別の要素で来る。記録として数えない（従来どおり新しい名前だけを見る）
+        self.touch('app.py', 'x = 2\n')
+        git(self.repo, 'add', 'app.py')
+        git(self.repo, 'mv', 'checkpoints/2026-01-01-初期構成-立ち上げ.md', 'old log.md')
+        r = run_hook('git commit -m x', self.repo)
+        self.assertEqual(r.returncode, 2)
+
     def test_PROGRESSを直していれば通る(self):
         self.touch('app.py', 'x = 2\n')
         self.touch('PROGRESS.md', '# 進捗\n更新\n')
