@@ -6,6 +6,7 @@
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -660,6 +661,62 @@ class ScopeGateTest(unittest.TestCase):
     def test_一覧が無ければ落とす(self):
         (self.root / 'docs/loop/design.md').write_text('# 設計\n')
         self.assertIn('一覧が無い', self.scope().stdout)
+
+
+class UpdateTest(unittest.TestCase):
+    """--update: 入れた時の版と突き合わせ、手を入れていないファイルだけ新しくする。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        base = Path(self._tmp.name)
+        self.root = base / 'repo'
+        self.root.mkdir()
+        (self.root / '.git').mkdir()
+        # 「入れた時の版」を作る: 今のひな型を写し、道具と工程表とエージェント1つを古い中身にする
+        self.old = base / 'old'
+        shutil.copytree(TOOL.parents[1] / 'templates' / 'loop', self.old)
+        (self.old / 'common/.claude/loop/bin/rules.py').unlink()
+        (self.old / 'common/.claude/loop/bin/loopctl.py').write_text('# 古い道具\n')
+        (self.old / 'dev/.claude/loop/pipeline.json').write_text('{"old": true}\n')
+        (self.old / 'dev/.claude/agents/dev-test.md').write_text('古いテスト役\n')
+        # 古い版で入れた状態を再現する
+        scaffold(self.root, '--profile', 'dev', '--no-settings')
+        for rel in ['.claude/loop/bin/loopctl.py', '.claude/loop/pipeline.json', '.claude/agents/dev-test.md']:
+            layer = 'common' if 'bin' in rel else 'dev'
+            shutil.copy(self.old / layer / rel, self.root / rel)
+        (self.root / '.claude/loop/bin/rules.py').unlink()
+        # 利用者が手で直したファイル
+        (self.root / '.claude/loop/pipeline.json').write_text('{"old": true, "mine": 1}\n')
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def update(self, *args):
+        return scaffold(self.root, '--update', '--old-dir', str(self.old), *args)
+
+    def test_手を入れていないファイルは新しくし直したものは触らない(self):
+        p = self.update()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('bin/rules.py', p.stdout.split('上書き')[0])
+        self.assertNotIn('古い道具', (self.root / '.claude/loop/bin/loopctl.py').read_text())
+        self.assertNotIn('古いテスト役', (self.root / '.claude/agents/dev-test.md').read_text())
+        self.assertIn('"mine": 1', (self.root / '.claude/loop/pipeline.json').read_text())
+        self.assertIn('手で直されているので触っていない: 1件', p.stdout)
+        self.assertIn('templates/loop/dev/.claude/loop/pipeline.json', p.stdout)
+
+    def test_確認だけなら何も変えない(self):
+        self.update('--dry-run')
+        self.assertIn('古い道具', (self.root / '.claude/loop/bin/loopctl.py').read_text())
+        self.assertFalse((self.root / '.claude/loop/bin/rules.py').exists())
+
+    def test_入れた記録が無ければ断る(self):
+        (self.root / '.claude/loop/.scaffold.json').unlink()
+        p = self.update()
+        self.assertEqual(p.returncode, 2)
+
+    def test_新規に入れる時はprofileが要る(self):
+        p = scaffold(self.root)
+        self.assertEqual(p.returncode, 2)
 
 
 if __name__ == '__main__':

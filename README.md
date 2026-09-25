@@ -44,7 +44,7 @@ quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同
 | `tools/fix-spacing.py` | 英数字と日本語の間の半角スペース（§9の「境目の空白」）を見つけて落とす。**既定は検査だけ**で、`--write`で直す。行頭のマーカー（見出し・箇条書き・番号・チェックボックス・引用）と、本文の頭の日付・章番号の直後は残し、コードフェンスの中とインラインコードの**中身**は触らない。境目の判定では印（`**`と`` ` ``）を**両側とも透かす**ので、`` `install.sh` を``や`）** へ`のような、grepの文字クラスでは拾えない形も直せる。**直さずに出すだけの「判断が要る候補」が2つ**——記法そのものを列挙している行（コード印が4つ以上並ぶ行。空白が項目の区切り）と、日本語のうしろに`(`で始まる英語の補足が続く形（`次の一手 (Top 3)`）。規則の悪い例を載せている行は`--keep RE`で守る（このリポなら`--keep '悪い例|でなく'`）。日本語同士の空白は§9の対象外なので触らない。**配置はせず**、cloneから`python3 <clone>/tools/fix-spacing.py`で呼ぶ。テストは上と同じ |
 | `tools/check-moved-lines.py` | 文書を分けて移した後、元の文書の各行が移動先のどれかに残っているかを突き合わせる（`NOTES.md`の一回限りの記録をcheckpointへ移し、残す節だけ書き直した時など）。元は`--from HEAD:NOTES.md`のようにgitの版を直接読めるので、書き換え前の退避が要らない。段を下げて貼った見出しと、行頭の字下げの違いは同じとみなし、空行と区切り行は数えない。どこにも無い行を行番号付きで出す（exit 1）。**配置はせず**、`migrate-rules`スキルからcloneのパスで呼ぶ。テストは上と同じ |
 | `templates/loop/` | **正本**。ループ系エージェントのひな型。`common/`（統括役`loop-conductor`・判断役`gate-judge`・状態を動かす`loopctl.py`・早止まりを捕まえるStop / SubagentStopフック・決定論ゲートの共通部品・判断役の結論を決定論へ昇格させる仕組み・完了条件とゲート設計の雛形）に、`dev/`（要件→設計→実装→テストの工程役4体と各工程のレビュー役4体・工程ごとのゲート）か`generic/`（工程をpipeline.jsonで自分で決める汎用の工程役とレビュー役）を重ねて使う。**配置はしない**——対象リポへ入れるのは`tools/loop-scaffold.py`。Opus 5.5公式の早止まり対策（文章だけの番の終わりを完了とみなさない・残りを名指しして続けさせる・続行は数回まで・走っている作業の戻りを待つ・常駐指示の例文）をそのまま部品にしてある。入れた後の使い方は入れた先の`.claude/loop/README.md` |
-| `tools/loop-scaffold.py` | ループのひな型を対象リポへ入れる。`python3 <clone>/tools/loop-scaffold.py <対象リポ> --profile dev`（開発以外は`--profile generic`）。既にあるファイルは上書きせず（`--force`で上書き）、対象の`.claude/settings.json`へStop / SubagentStopフックを重複なく足す（控えは`.bak`、`--no-settings`で触らない）。何をどの版から入れたかを`.claude/loop/.scaffold.json`に残す。**微調整は入れた先で行い、ここへは戻さない**。`--dry-run`で確認だけ。**配置はせず**、cloneから呼ぶ。テストは`python3 -m unittest discover -s tools/tests` |
+| `tools/loop-scaffold.py` | ループのひな型を対象リポへ入れる。`python3 <clone>/tools/loop-scaffold.py <対象リポ> --profile dev`（開発以外は`--profile generic`）。既にあるファイルは上書きせず（`--force`で上書き）、対象の`.claude/settings.json`へStop / SubagentStopフックを重複なく足す（控えは`.bak`、`--no-settings`で触らない）。何をどの版から入れたかを`.claude/loop/.scaffold.json`に残す。**入れた先を新しい版へ上げるのは`--update`**（入れた時の版と突き合わせ、手を入れていないファイルだけ新しくし、手で直したファイルは触らずに取り込み用の差分コマンドを出す）。**微調整は入れた先で行い、ここへは戻さない**。`--dry-run`で確認だけ。**配置はせず**、cloneから呼ぶ。テストは`python3 -m unittest discover -s tools/tests` |
 | `settings/display.json` | **正本**。表示の設定（思考の要約・focus表示）。`install.sh`が`~/.claude/settings.json`へ**無いキーだけ**足す（PCごとに変えた値は戻さない。`--no-display-settings`で省く）。中身は下の「表示の設定」 |
 | `install.sh` | 上記を両環境へ配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に`tools/check-limits.sh`で上限を目安チェック。`--no-codex`でCodex側の配置を省ける。**clone以外（配布先へ取り込まれた複製）から走った時は、`rules/*.md`がpull専用である旨をstderrに出す** |
 
@@ -97,6 +97,28 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 - 一覧の行を書き換えたい時は`subagentStatusLine`（未設定）
 
 **他のPC**: `git pull && ./install.sh`で入る。**入れた後にClaude Codeを起動し直す**。2026-09-25の`04128f3`〜本変更の間に`install.sh`を走らせたPCは、`~/.claude/settings.json`の`env`に`CLAUDE_CODE_ENABLE_TODO_TOOLS`が残っているので手で消す。
+
+## 他のPCへ反映する
+
+正本の編集はこのPCだけで行い、他のPCは受け取る側に回る（「ルールを変更するとき」）。受け取る側の手順は次の4つ。**1〜2はいつでも、3は該当する時だけ、4はループのひな型を入れたリポがある時だけ**。
+
+1. **取り込む**: `cd <claude-rulesのclone> && git pull --ff-only && ./install.sh`。`install.sh`は`~/.claude/settings.json`へ関門のフックと表示の設定を**無いものだけ**足す（告知が出る）。終わったら**Claude Codeを起動し直す**（設定と常時読み込みのルールは起動時に読まれる）
+2. **確かめる**: `jq '{viewMode, showThinkingSummaries}' ~/.claude/settings.json`で表示の設定、`tools/check-record-guard.sh --repo <作業するリポ>`で関門（出たコマンドを**単独の呼び出しで**打つ）
+3. **pullが止まった時**: そのPCで`IMPROVEMENTS.md`に書き足してpushしていない分があると、pullが衝突する。**正本側に同じ内容が転記済みか**を`git diff origin/main -- IMPROVEMENTS.md`で見て、転記済みなら手元の分を捨てる（`git checkout -- IMPROVEMENTS.md`）。まだ無い分だけ残してcommitし、pullし直す
+4. **ループのひな型を入れたリポを上げる**（リポごと）:
+   ```bash
+   python3 <clone>/tools/loop-scaffold.py <リポ> --update --dry-run   # 何が起きるかを見る
+   python3 <clone>/tools/loop-scaffold.py <リポ> --update
+   ```
+   - 手を入れていないファイルは新しくなり、手で直したファイル（多くは`pipeline.json`・`gates/<工程>.sh`・`GOAL.md`・`commands.env`）は**触らずに一覧で出る**。一覧に添えられた`git -C <clone> diff <入れた時の版> <今の版> -- …`でひな型側の変更を見て、手で取り込む
+   - 実行中のループがあれば`loopctl.py finish`してから`begin`し直す（実行開始時に控える項目が増えているため）
+   - 更新の後、導入先の`.claude/loop/README.md`の「導入したら最初にやること」の0（上限で止まることを先に確かめる）を1回やる
+   - 入れた先のリポでcommitする（`.claude/loop/.scaffold.json`の版が新しくなる）
+
+### 日付ごとの一回限りの手当て
+
+- **2026-09-25**: この日の`04128f3`と`397b2d7`の間に`install.sh`を走らせたPCは、`~/.claude/settings.json`の`env`に`CLAUDE_CODE_ENABLE_TODO_TOOLS`が残る（to-doは全体でなくリポ単位へ変えたため）。`jq '.env' ~/.claude/settings.json`で見て、あれば消す。業務のPCでループのひな型を入れたリポは、4の`--update`で上げる（同日に不具合の修正・範囲の検査・昇格の仕組み・歯止めが入った。手で足した上限や起票の決まりは、ひな型側にも入ったので重複を見て整理する）
+- **2026-09-17**: リポを作り直したので、それ以前のcloneは`git pull`が進まない。**cloneを取り直す**（消す前に`IMPROVEMENTS.md`の未pushの追記を確認）
 
 ## ルールを変更するとき
 
