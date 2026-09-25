@@ -193,6 +193,28 @@ def render(st: dict, p: dict) -> str:
 
 # ---------- 遷移 ----------
 
+def head_commit() -> str | None:
+    """実行を始めた時点のコミット。実装のゲートが「何を変えたか」をここからの差分で見る。"""
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=LOOP_DIR.parent.parent, capture_output=True, text=True)
+        return r.stdout.strip() or None if r.returncode == 0 else None
+    except OSError:
+        return None
+
+
+def preexisting_changes() -> list[str]:
+    """実行を始めた時点で既にあった未コミットの変更と追跡外のファイル。範囲の検査はこれを数えない。"""
+    out = []
+    for args in (["diff", "--name-only", "HEAD"], ["ls-files", "--others", "--exclude-standard"]):
+        try:
+            r = subprocess.run(["git", *args], cwd=LOOP_DIR.parent.parent, capture_output=True, text=True)
+        except OSError:
+            return []
+        if r.returncode == 0:
+            out += [x for x in r.stdout.splitlines() if x]
+    return sorted(set(out))
+
+
 def cmd_begin(a):
     p = pipeline()
     with locked():
@@ -204,6 +226,8 @@ def cmd_begin(a):
             "active": True,
             "finished": False,
             "started_at": now(),
+            "base_commit": head_commit(),
+            "base_preexisting": preexisting_changes(),
             "goal": a.goal or "",
             "steps": {s["id"]: {"status": "pending", "shards": {}, "rework": 0, "notes": [], "blocker": None}
                       for s in p["steps"] if not a.only or s["id"] in a.only},
@@ -307,7 +331,9 @@ def run_gate(p: dict, sid: str) -> tuple[bool, str]:
     path = (LOOP_DIR / gate).resolve()
     if not path.exists():
         return False, f"ゲート {gate} がありません"
-    env = dict(os.environ, LOOP_STEP=sid, LOOP_DIR=str(LOOP_DIR), REPO_ROOT=str(LOOP_DIR.parent.parent))
+    st = load_json(STATE, {}) or {}
+    env = dict(os.environ, LOOP_STEP=sid, LOOP_DIR=str(LOOP_DIR), REPO_ROOT=str(LOOP_DIR.parent.parent),
+               LOOP_BASE_COMMIT=st.get("base_commit") or "")
     try:
         r = subprocess.run(["bash", str(path)], cwd=LOOP_DIR.parent.parent, env=env,
                            capture_output=True, text=True, timeout=sd.get("gate_timeout", 1800))

@@ -15,6 +15,7 @@
 3. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ）
 
 ## 完了
+- [x] 2026-09-25 ループのひな型の改善（別PCの実走で出た不具合5件。止まった工程の後ろの催促・差し戻し理由・テストのゲート・範囲の検査を決定論へ・細部） → [checkpoint](checkpoints/2026-09-25-ループのひな型の改善-別PCの実走で出た不具合.md)
 - [x] 2026-09-25 表示の設定（思考の要約・focus表示）を`install.sh`で配り、to-doはリポ単位で有効にする形にした。見返し用のメモはREADME「表示の設定」 → [checkpoint](checkpoints/2026-09-25-表示の設定-配布と見返しメモ.md)
 - [x] 2026-09-25 ループ系エージェントのひな型（統括役・工程役とレビュー役・決定論ゲート・確信度付きの判断役と較正・Opus 5.5公式の早止まり対策のStop / SubagentStopフック）と、対象リポへ入れる`tools/loop-scaffold.py`を追加。開発用と汎用の2種 → [checkpoint](checkpoints/2026-09-25-ループ系エージェントのひな型-公式の早止まり対策と一式.md)
 - [x] 2026-09-21 記録の関門（commitの入口）が空白を含む記録ファイル名を取りこぼしていたのを直した（`git status`の引用が原因。`-z`で読む）。後追いとpushの関門は影響なし（esp32-wifi-hidのセッションからの報告） → [checkpoint](checkpoints/2026-09-21-空白入りパス-記録の関門の取りこぼし.md)
@@ -40,8 +41,6 @@
 - [x] 2026-09-15 常時トリアージ規則を廃止（quorumの注入・Codexの`$triage`必須・自動分類フック登録。quorum側は`f953b3d`）→ [checkpoint](checkpoints/2026-09-15-常時トリアージの廃止.md)
 - [x] 2026-09-15 §2に「`PROGRESS.md`に更新履歴を積まない」を追加（他PCからの逆輸入、Claude / Codex両方）→ [checkpoint](checkpoints/2026-09-15-進捗の更新履歴の禁止.md)
 - [x] 2026-09-15 `migrate-rules`をmeeting-scribeへ初めて通して出たズレ6件を、スキルと移行コマンドに反映 → [checkpoint](checkpoints/2026-09-15-移行スキルの初回適用で出たズレ.md)
-- [x] 2026-09-14 既存PJを記録ルールの改訂に揃えるスキル`migrate-rules`と、移し漏れの突き合わせコマンドを追加（discの移行で踏んだ落ちた作業・heredocの罠を手順に固定）→ [checkpoint](checkpoints/2026-09-14-既存PJ移行スキル.md)
-- [x] 2026-09-12 記録ルールの改訂4件と共通ルールの圧縮（5コミット、`9875334`〜`6f16ea0`）→ [README経緯](README.md#経緯)
 
 ## 進行中
 (なし)

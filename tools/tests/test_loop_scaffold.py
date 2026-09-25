@@ -415,5 +415,67 @@ class LoopRunTest(unittest.TestCase):
         self.assertIsNone(self.sub('dev-implement', msg))
 
 
+class ScopeGateTest(unittest.TestCase):
+    """実装のゲートの範囲の検査（本物のgitリポで）。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        g = lambda *a: subprocess.run(['git', '-C', str(self.root), *a], capture_output=True, text=True, check=True)
+        self.git = g
+        g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't')
+        (self.root / 'src').mkdir()
+        (self.root / 'src/a.py').write_text('a\n')
+        (self.root / 'README.md').write_text('r\n')
+        g('add', '-A'); g('commit', '-qm', 'init')
+        scaffold(self.root, '--profile', 'dev', '--no-settings')
+        self.loop = self.root / '.claude/loop'
+        self.env = dict(os.environ, LOOP_DIR=str(self.loop))
+        subprocess.run([sys.executable, str(self.loop / 'bin/loopctl.py'), 'begin'], env=self.env, check=True, capture_output=True)
+        d = self.root / 'docs/loop'
+        d.mkdir(parents=True)
+        (d / 'design.md').write_text('# 設計\n## 触ってよいファイル\n- `src/*`\n- tests/test_a.py\n## 実装の分担\n')
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def scope(self):
+        base = json.loads((self.loop / 'state.json').read_text())['base_commit']
+        env = dict(self.env, LOOP_STEP='implement', REPO_ROOT=str(self.root), LOOP_BASE_COMMIT=base or '')
+        script = '. "$LOOP_DIR/gates/lib.sh"; need_scope docs/loop/design.md "触ってよいファイル"; gate_end'
+        return subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
+
+    def test_開始時のコミットを記録する(self):
+        self.assertTrue(json.loads((self.loop / 'state.json').read_text())['base_commit'])
+
+    def test_範囲内の変更と新規ファイルは通す(self):
+        (self.root / 'src/a.py').write_text('b\n')
+        (self.root / 'src/sub').mkdir()
+        (self.root / 'src/sub/new.py').write_text('n\n')
+        (self.root / 'tests').mkdir()
+        (self.root / 'tests/test_a.py').write_text('t\n')
+        p = self.scope()
+        self.assertEqual(p.returncode, 0, p.stdout)
+
+    def test_範囲外の変更は落とす(self):
+        (self.root / 'README.md').write_text('changed\n')
+        p = self.scope()
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('範囲外の変更: README.md', p.stdout)
+
+    def test_範囲外の新規ファイルも落とす(self):
+        (self.root / 'other.txt').write_text('x\n')
+        self.assertIn('範囲外の変更: other.txt', self.scope().stdout)
+
+    def test_開始時に既にあった未コミットの変更は数えない(self):
+        # setUpでひな型を入れたまま（未コミット）で begin している
+        self.assertIn('.claude/agents/dev-design.md', json.loads((self.loop / 'state.json').read_text())['base_preexisting'])
+        self.assertNotIn('dev-design.md', self.scope().stdout)
+
+    def test_一覧が無ければ落とす(self):
+        (self.root / 'docs/loop/design.md').write_text('# 設計\n')
+        self.assertIn('一覧が無い', self.scope().stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

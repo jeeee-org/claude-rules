@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# 実装の決定論ゲート。ビルド・型・リント・既存テストが通るか。コマンドは commands.env で埋める。
+# 実装の決定論ゲート。変更が設計の範囲内か、ビルド・型・リント・既存テストが通るか。コマンドは commands.env で埋める。
 . "$LOOP_DIR/gates/lib.sh"
+need_scope docs/loop/design.md "触ってよいファイル"
 need_cmd "ビルド" "${BUILD_CMD:-}"
 [ -n "${TYPE_CMD:-}" ] && need_cmd "型検査" "$TYPE_CMD"
 need_cmd "リント" "${LINT_CMD:-}"

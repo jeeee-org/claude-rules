@@ -55,6 +55,47 @@ PY
   if [ -z "$out" ]; then ok "$dst の表で、$src の全idの結果が合格"; else while IFS= read -r l; do ng "${l#NG }"; done <<<"$out"; fi
 }
 
+# 変更したファイルが、許された一覧（設計の節）の中にあるか。
+# 変更 = 実行開始時のコミット（loopctlが LOOP_BASE_COMMIT で渡す）からの差分＋追跡外の新規ファイル。
+# 一覧は <file> の <見出し> 節の箇条書き（`- パターン`。バッククォート可）。パターンはfnmatch（* は / もまたぐ）。
+# ループ自身のファイル（docs/loop/・.claude/loop/）と、実行開始時に既にあった未コミットの変更
+# （state.json の base_preexisting）は数えない。**始める前にcommitしておくと検査が最も確か**。
+need_scope() {
+  local file="$1" heading="$2" out
+  if [ -z "${LOOP_BASE_COMMIT:-}" ]; then ng "実行開始時のコミットが記録されていない（gitリポで loopctl.py begin し直す）"; return; fi
+  out=$(python3 - "$file" "$heading" "$LOOP_BASE_COMMIT" <<'PY'
+import fnmatch, re, subprocess, sys
+file, heading, base = sys.argv[1:4]
+try:
+    text = open(file, encoding="utf-8").read()
+except OSError:
+    print(f"NG {file} が読めない"); sys.exit()
+m = re.search(r"^## " + re.escape(heading) + r"\s*$(.*?)(?=^## |\Z)", text, re.M | re.S)
+pats = [re.sub(r"^[-*]\s*`?|`?\s*$", "", l.strip()) for l in (m.group(1).splitlines() if m else []) if re.match(r"\s*[-*]\s", l)]
+if not pats:
+    print(f"NG {file} の「{heading}」節に一覧が無い"); sys.exit()
+def git(*a):
+    r = subprocess.run(["git", *a], capture_output=True, text=True)
+    return [x for x in r.stdout.splitlines() if x] if r.returncode == 0 else None
+changed = git("diff", "--name-only", base)
+if changed is None:
+    print(f"NG 開始時のコミット {base} との差分が取れない"); sys.exit()
+changed += git("ls-files", "--others", "--exclude-standard") or []
+import json, os
+try:
+    pre = set(json.load(open(os.path.join(os.environ["LOOP_DIR"], "state.json"))).get("base_preexisting", []))
+except (OSError, ValueError, KeyError):
+    pre = set()
+for f in sorted(set(changed)):
+    if f.startswith(("docs/loop/", ".claude/loop/")) or f in pre:
+        continue
+    if not any(fnmatch.fnmatch(f, p) for p in pats):
+        print(f"NG 範囲外の変更: {f}")
+PY
+)
+  if [ -z "$out" ]; then ok "変更はすべて「$heading」の範囲内"; else while IFS= read -r l; do ng "${l#NG }"; done <<<"$out"; fi
+}
+
 # コマンドを回して終了コードで判定する。コマンドが未設定なら不合格（黙って通さない）
 need_cmd() {
   local label="$1" cmd="${2:-}"

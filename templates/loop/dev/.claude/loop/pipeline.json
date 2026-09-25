@@ -19,9 +19,19 @@
       "worker": "dev-requirements",
       "reviewer": "review-requirements",
       "gate": "gates/requirements.sh",
-      "outputs": ["docs/loop/requirements.md"],
+      "outputs": [
+        "docs/loop/requirements.md"
+      ],
       "judge_questions": [
-        {"id": "req-intent", "question": "要件は、依頼とGOAL.mdの意図を取り違えずに捉えているか", "answers": ["yes", "no"], "pass": "yes"}
+        {
+          "id": "req-intent",
+          "question": "要件は、依頼とGOAL.mdの意図を取り違えずに捉えているか",
+          "answers": [
+            "yes",
+            "no"
+          ],
+          "pass": "yes"
+        }
       ]
     },
     {
@@ -30,9 +40,19 @@
       "worker": "dev-design",
       "reviewer": "review-design",
       "gate": "gates/design.sh",
-      "outputs": ["docs/loop/design.md"],
+      "outputs": [
+        "docs/loop/design.md"
+      ],
       "judge_questions": [
-        {"id": "design-fit", "question": "設計は既存の構造に沿い、要件を満たす中で最も単純な形か", "answers": ["yes", "no"], "pass": "yes"}
+        {
+          "id": "design-fit",
+          "question": "設計は既存の構造に沿い、要件を満たす中で最も単純な形か",
+          "answers": [
+            "yes",
+            "no"
+          ],
+          "pass": "yes"
+        }
       ]
     },
     {
@@ -42,9 +62,7 @@
       "reviewer": "review-implement",
       "gate": "gates/implement.sh",
       "parallel": 4,
-      "judge_questions": [
-        {"id": "impl-scope", "question": "変更は設計の範囲に収まり、範囲外のファイルを書き換えていないか", "answers": ["yes", "no"], "pass": "yes"}
-      ]
+      "judge_questions": []
     },
     {
       "id": "test",
@@ -52,9 +70,19 @@
       "worker": "dev-test",
       "reviewer": "review-test",
       "gate": "gates/test.sh",
-      "outputs": ["docs/loop/test-report.md"],
+      "outputs": [
+        "docs/loop/test-report.md"
+      ],
       "judge_questions": [
-        {"id": "test-meaningful", "question": "テストは受け入れ条件を実際に確かめているか（実装が壊れたら落ちるか）", "answers": ["yes", "no"], "pass": "yes"}
+        {
+          "id": "test-meaningful",
+          "question": "テストは受け入れ条件を実際に確かめているか（実装が壊れたら落ちるか）",
+          "answers": [
+            "yes",
+            "no"
+          ],
+          "pass": "yes"
+        }
       ]
     }
   ]
