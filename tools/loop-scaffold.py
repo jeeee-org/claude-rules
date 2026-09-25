@@ -12,6 +12,7 @@
 - --update は .claude/loop/.scaffold.json の版（入れた時の版）と突き合わせて更新する。
   無いファイルは作り、入れた時の版のまま（手を入れていない）のファイルは新しい版で上書きし、
   手で直されたファイルは触らずに一覧と取り込み用の差分コマンドを出す
+- 登録先の settings.json やひな型の要のファイルが git の無視対象なら知らせる（そのworktreeにしか無い）
 - commitはしない
 """
 from __future__ import annotations
@@ -106,6 +107,7 @@ def update(target: Path, dry: bool, old_dir: Path | None) -> int:
             print(f"      git -C {SRC} diff {rev} {new_rev} -- templates/loop/{src.relative_to(TEMPLATES).as_posix()}")
     if not dry:
         print("\n実行中のループがあれば、`loopctl.py finish` してから `begin` し直す（新しい状態の項目は begin で作られる）")
+    warn_ignored(target)
     return 0
 
 
@@ -141,6 +143,30 @@ def merge_settings(path: Path, dry: bool, hooks_on: bool = True, todo: bool = Fa
             shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return added
+
+
+# git の無視対象だと、フックやループの定義がそのworktreeにしか無い（他のworktree・cloneでは効かない）
+SHARED = (".claude/settings.json", ".claude/agents/loop-conductor.md", ".claude/loop/pipeline.json")
+
+
+def ignored_paths(target: Path) -> list[str]:
+    """SHARED のうち git の無視対象になっているもの。gitリポでなければ空。"""
+    try:
+        r = subprocess.run(["git", "-C", str(target), "check-ignore", "--no-index", *SHARED],
+                           capture_output=True, text=True)
+    except OSError:
+        return []
+    if r.returncode not in (0, 1):  # 128 = gitリポでない等
+        return []
+    return [l.strip() for l in r.stdout.splitlines() if l.strip()]
+
+
+def warn_ignored(target: Path) -> None:
+    ignored = ignored_paths(target)
+    if ignored:
+        print(f"\n※ 次のファイルがgitの無視対象です: {', '.join(ignored)}")
+        print("  フック・ループの定義・実行中の状態は、このworktreeにしか無い。")
+        print("  ループはこのworktreeから起動し、終わってもworktreeを消さない（他のworktreeやcloneでは効かない）")
 
 
 def main(argv=None) -> int:
@@ -206,7 +232,8 @@ def main(argv=None) -> int:
         print("  1. .claude/loop/GOAL.md に完了条件を書く")
         print("  2. .claude/loop/gates/commands.env にビルド・リント・テストのコマンドを書く")
         print("  3. .claude/loop/pipeline.json の工程をこのリポに合わせる")
-        print("  4. claude --agent loop-conductor で回す")
+        print("  4. claude --agent loop-conductor で回す（--agent で起動しないとStopフックの早止まり対策は効かない）")
+    warn_ignored(target)
     return 0
 
 

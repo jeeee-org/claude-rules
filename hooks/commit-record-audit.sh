@@ -17,6 +17,8 @@
 set -u
 
 RECORD_RE='(^|/)(REQUIREMENTS|PROGRESS|NOTES)\.md$|(^|/)checkpoints/'
+# pushの関門（push-record-guard.sh）と同じ例外。本文にこの行があれば、記録が要らないcommitとして黙る
+EXEMPT_RE='^[[:space:]]*(記録なし|No-Record)[[:space:]]*[:：]'
 FRESH_SECONDS="${CR_AUDIT_FRESH_SECONDS:-120}"
 
 input=$(cat) || exit 0
@@ -83,6 +85,7 @@ while IFS= read -r d; do
   git -c core.quotepath=false -C "$root" ls-files 2>/dev/null | grep -Eq "$RECORD_RE" || continue
   files=$(git -c core.quotepath=false -C "$root" show --name-only --pretty=format: HEAD 2>/dev/null)
   grep -Eq "$RECORD_RE" <<<"$files" && continue
+  git -C "$root" log -1 --format=%B 2>/dev/null | grep -Eq "$EXEMPT_RE" && continue
 
   subject=$(git -C "$root" log -1 --format=%s 2>/dev/null)
   cat >&2 <<MSG
@@ -94,7 +97,7 @@ while IFS= read -r d; do
 記録（checkpoint / PROGRESS.md / REQUIREMENTS.md / NOTES.md）を書いて、
 次のcommitで入れてください。直前のcommitへまとめるなら --amend を使えます。
 記録が要らない作業だった場合は、コミットメッセージに「記録なし: <理由>」を残してください
-（pushの関門はこのトレーラを例外として通します）。
+（この後追いとpushの関門は、この行を例外として通します）。
 $(seen_note)
 MSG
   exit 2

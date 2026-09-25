@@ -299,3 +299,4 @@
 ### 優先
 - 2・3・9は小さく、すぐ直せる。
 - 4〜6は、人を減らしていく仕組みの本体で、「判断役を育てる」が回るかどうかを決める。
+- **反映（2026-09-25）**: 2・3・9・10・11と、後追いの監査の件を反映。2は工程役5つの「書き換えない」に`candidates.md`へ1行足すのは除くと添えた（改修の検査`SELF_FILES`はもともと対象外）。3はGATES.mdの問いの書き方へ。9は導入の道具が`settings.json`・統括役の定義・`pipeline.json`のどれかがgitの無視対象なら知らせる（新規・`--update`の両方）。11はREADMEの導入手順とGATES.mdの表に、文書の読み込みを要する問いならsonnetへ。後追いの監査はpushの関門と同じ正規表現で本文の`記録なし:`を読む。テスト2件追加。1・4〜8・12は未着手。⇒ [反映済み → templates/loop/*/agents/{dev-*,step-worker}.md・templates/loop/common/.claude/loop/{GATES,README}.md・tools/loop-scaffold.py・hooks/commit-record-audit.sh]

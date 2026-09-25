@@ -351,6 +351,13 @@ class AuditTest(unittest.TestCase):
         r = self.run_audit('git add -A && git commit -m x')
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_記録なしの行があれば黙る(self):
+        (self.repo / 'app.py').write_text('x\n', encoding='utf-8')
+        git(self.repo, 'add', '-A')
+        git(self.repo, 'commit', '-m', '整形のみ\n\n記録なし: 空白の整形のみ')
+        r = self.run_audit('git add -A && git commit -F msg.txt')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_commitを含まない呼び出しは見ない(self):
         self.commit('app.py')
         self.assertEqual(self.run_audit('ls -la').returncode, 0)

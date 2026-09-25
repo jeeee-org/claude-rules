@@ -32,6 +32,8 @@
 2. `.claude/loop/gates/commands.env`にビルド・リント・テストのコマンドを書く（空のままのゲートは不合格になる）
 3. `.claude/loop/pipeline.json`の工程を、このリポの作業に合わせる（汎用版は`instructions`・`outputs`・`review_focus`を書き換える）
 4. ゲートを空打ちして、形が通るかを見る: `LOOP_STEP=<工程> LOOP_DIR=.claude/loop REPO_ROOT=. bash .claude/loop/gates/<工程>.sh`
+5. 判断役（`.claude/agents/gate-judge.md`）の`model`を選ぶ。既定のhaikuは形や網羅の問い向き。問いが文書の読み込み（過去の裁定・仕様との突き合わせ）を要するなら、sonnetへ上げる
+6. `.claude/settings.json`がgitの無視対象なら（導入の道具が知らせる）、フックはこのworktreeにしか無い。**ループはこのworktreeから起動し、終わってもworktreeを消さない**
 
 ## 回し方
 
@@ -41,6 +43,8 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 ```
 
 ひな型を入れた直後の変更は、回す前にcommitしておく（実装のゲートが「実行を始めた時点からの差分」で範囲を見るため。未コミットのまま始めると、その時点のファイルは検査から外れる）。
+
+**`--agent`で起動する。** 普通のセッションで「回して」と頼んでも統括役の手順では回るが、Stopフックの早止まり対策は統括役として起動したセッションにしか効かないので、区切りごとに止まって人の返事を待つ。
 
 統括役への最初の一言は「GOAL.mdのとおりにループを回して」でよい。`/goal`（別モデルが毎番、完了条件を確かめる）と併用してもよい: `/goal .claude/loop/bin/loopctl.py status で全工程が完了と出る`。
 

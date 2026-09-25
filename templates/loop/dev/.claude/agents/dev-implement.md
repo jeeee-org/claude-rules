@@ -31,4 +31,4 @@ STATUS: done | blocked | partial
 状態（loopctl）は統括役が動かす。あなたは`loopctl.py`を呼ばない。
 
 - **作業を増やさない**: 新しい工程・作業項目・issue・PRを起こさない。気づいた改善や別件は`.claude/loop/candidates.md`へ1行足すだけにする（起票するかは人が決める）。
-- **ループ自身を改修しない**: `.claude/loop/`・`.claude/agents/`・`.claude/settings.json`を書き換えない（ゲートが機械で確かめ、変わっていれば不合格になる）。要ると思ったら`STATUS: blocked`で人へ返す。
+- **ループ自身を改修しない**: `.claude/loop/`・`.claude/agents/`・`.claude/settings.json`を書き換えない（上の`candidates.md`へ1行足すのは除く。ゲートが機械で確かめ、変わっていれば不合格になる）。要ると思ったら`STATUS: blocked`で人へ返す。

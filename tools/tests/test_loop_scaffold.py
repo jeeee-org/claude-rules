@@ -90,6 +90,17 @@ class ScaffoldTest(unittest.TestCase):
         data = json.loads((self.root / '.claude/settings.json').read_text())
         self.assertEqual(data, {'env': {'CLAUDE_CODE_ENABLE_TODO_TOOLS': '1'}})
 
+    def test_settingsがgitの無視対象なら知らせる(self):
+        shutil.rmtree(self.root / '.git')
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        (self.root / '.gitignore').write_text('.claude/settings.json\n')
+        p = scaffold(self.root, '--profile', 'dev')
+        self.assertIn('gitの無視対象です: .claude/settings.json', p.stdout)
+        self.assertNotIn('pipeline.json', p.stdout.split('無視対象です')[1].splitlines()[0])
+        (self.root / '.gitignore').write_text('')
+        p = scaffold(self.root, '--profile', 'dev')
+        self.assertNotIn('無視対象', p.stdout)
+
     def test_settingsを触らない指定(self):
         scaffold(self.root, '--profile', 'dev', '--no-settings')
         self.assertFalse((self.root / '.claude/settings.json').exists())
