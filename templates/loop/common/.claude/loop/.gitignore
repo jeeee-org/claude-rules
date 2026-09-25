@@ -1,0 +1,4 @@
+# 実行ごとの状態（学習の記録 judge/ はgit管理する）
+state.json
+state.json.tmp
+.state.lock

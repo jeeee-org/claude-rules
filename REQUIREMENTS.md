@@ -2,7 +2,7 @@
 
 > 決めたこと（要求・方針・作業・予定）とスコープ、未決事項。**進み具合はPROGRESS.md**（計画の本体を二重に持たない）。決まった／変わったら即更新し、**片付いたら消す**（経緯はcheckpoints/に残る）。
 
-最終更新: 2026-09-20
+最終更新: 2026-09-25
 
 ## 目的・スコープ
 - Claude Code / Codexのグローバル共通ルール（`rules/*.md`）と`init-rules`スキルを、複数PCへ`install.sh`＋マーカーブロック方式で配布・同期する。
@@ -37,6 +37,7 @@
 ## やること / バックログ
 - 既存PJを、開いた時に`/migrate-rules`で記録ルールの改訂に揃える（checkpointの移動・`REQUIREMENTS.md`の新設・ADR節の振り分け・`NOTES.md`の整理）。checkpointを移すかはPJごとにユーザーが決める（2026-09-14時点で未移行は17PJ。kakeiboとdiscは移行済み）。
 - 他PCでclaude-rulesの**cloneを取り直して**`./install.sh`（2026-09-17にリポを作り直したため。消す前に`IMPROVEMENTS.md`への未pushの追記を確認する）。quorumは`git pull && ./install.sh`で、installがトリアージブロックの残骸を取り除く。`settings.json`の分類フック登録は各PCで手で外す。
+- ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
 - `rules/codex-global-rules.md`の圧縮（残量3,059Bで急がない。Claude側と同じ観点で他所と重複する語を畳む）。
 
 ## 未決事項

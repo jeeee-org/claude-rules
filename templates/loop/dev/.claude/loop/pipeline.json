@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "profile": "dev",
+  "conductor": "loop-conductor",
+  "max_auto_continues": 3,
+  "max_rework": 3,
+  "time_budget_sec": null,
+  "judge": {
+    "agent": "gate-judge",
+    "default_threshold": 0.9,
+    "target_accuracy": 0.95,
+    "min_samples": 20,
+    "audit_rate": 0.1
+  },
+  "steps": [
+    {
+      "id": "requirements",
+      "title": "要件",
+      "worker": "dev-requirements",
+      "reviewer": "review-requirements",
+      "gate": "gates/requirements.sh",
+      "outputs": ["docs/loop/requirements.md"],
+      "judge_questions": [
+        {"id": "req-intent", "question": "要件は、依頼とGOAL.mdの意図を取り違えずに捉えているか", "answers": ["yes", "no"], "pass": "yes"}
+      ]
+    },
+    {
+      "id": "design",
+      "title": "設計",
+      "worker": "dev-design",
+      "reviewer": "review-design",
+      "gate": "gates/design.sh",
+      "outputs": ["docs/loop/design.md"],
+      "judge_questions": [
+        {"id": "design-fit", "question": "設計は既存の構造に沿い、要件を満たす中で最も単純な形か", "answers": ["yes", "no"], "pass": "yes"}
+      ]
+    },
+    {
+      "id": "implement",
+      "title": "実装",
+      "worker": "dev-implement",
+      "reviewer": "review-implement",
+      "gate": "gates/implement.sh",
+      "parallel": 4,
+      "judge_questions": [
+        {"id": "impl-scope", "question": "変更は設計の範囲に収まり、範囲外のファイルを書き換えていないか", "answers": ["yes", "no"], "pass": "yes"}
+      ]
+    },
+    {
+      "id": "test",
+      "title": "テスト",
+      "worker": "dev-test",
+      "reviewer": "review-test",
+      "gate": "gates/test.sh",
+      "outputs": ["docs/loop/test-report.md"],
+      "judge_questions": [
+        {"id": "test-meaningful", "question": "テストは受け入れ条件を実際に確かめているか（実装が壊れたら落ちるか）", "answers": ["yes", "no"], "pass": "yes"}
+      ]
+    }
+  ]
+}
