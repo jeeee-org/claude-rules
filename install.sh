@@ -15,7 +15,7 @@
 # **$CLAUDE_CONFIG_DIR/settings.json を書き換えます**（記録の関門フック2件を hooks へ登録。
 # 控えを settings.json.bak に取ります）。登録を止めるなら:
 #   ./install.sh --no-hook-register   （または CLAUDE_RULES_REGISTER_HOOKS=0 ./install.sh）
-# あわせて表示の設定（settings/display.json。to-doチェックリスト・思考の要約・focus表示）を
+# あわせて表示の設定（settings/display.json。思考の要約・focus表示）を
 # **無いキーだけ**足します（PCごとに決めた値は上書きしない）。止めるなら:
 #   ./install.sh --no-display-settings （または CLAUDE_RULES_DISPLAY_SETTINGS=0 ./install.sh）
 set -euo pipefail
@@ -234,9 +234,9 @@ register_record_guard() {
 }
 register_record_guard
 
-# 表示の設定（正本 settings/display.json）。Opus 5.5以降は to-do ツールが既定で外れ、
-# 作業中の様子が見えにくい。**無いキーだけ足す**——PCごとに選び直した値（viewMode等）を
-# 再installで戻さないため。中身の説明はREADME「表示の設定」。
+# 表示の設定（正本 settings/display.json）。**無いキーだけ足す**——PCごとに選び直した値
+# （viewMode等）を再installで戻さないため。to-doツール（CLAUDE_CODE_ENABLE_TODO_TOOLS）は
+# 全体には入れず、要るリポの .claude/settings.json で有効にする（README「表示の設定」）。
 apply_display_settings() {
   if [ "$DISPLAY_SETTINGS" = 0 ]; then
     echo "※ 表示の設定は省きました（--no-display-settings）。" >&2

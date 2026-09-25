@@ -41,6 +41,7 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 - `python3 .claude/loop/bin/loopctl.py status` — 工程ごとの状態・差し戻し回数・分担・止まっている理由
 - `/tasks` — 動いているサブエージェント。Enterでその転記を開ける（完了後30秒まで）
 - `Ctrl+O` — 転記の詳細表示（各ツール呼び出しの中身）
+- `Ctrl+T` — Claudeのto-doチェックリスト。Opus 5.5では既定で出ないので、要るなら`.claude/settings.json`の`env`に`"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1"`を足す（導入時なら`--enable-todo`）
 
 ## 人の出番
 

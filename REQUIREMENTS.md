@@ -7,6 +7,7 @@
 ## 目的・スコープ
 - Claude Code / Codexのグローバル共通ルール（`rules/*.md`）と`init-rules`スキルを、複数PCへ`install.sh`＋マーカーブロック方式で配布・同期する。
 - 対象は「全PJに恒久的に効く決まり」だけ。PJ固有の差分は各PJの`CLAUDE.md`に置く（グローバル§7）。
+- 表示の設定は`settings/display.json`を正本に`install.sh`で全PCへ配る。**to-doツール（`CLAUDE_CODE_ENABLE_TODO_TOOLS`）は全体に入れず、要るリポの`.claude/settings.json`で有効にする**（2026-09-25決定）。
 - 出力スタイル（`~/.claude/output-styles/`）は配布対象外。文章の決まりは`rules/*.md`の§8・§9へ一本化する。
 
 ## 進行中の作業

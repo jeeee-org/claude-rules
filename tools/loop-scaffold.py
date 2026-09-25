@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """ループ系エージェントのひな型を、対象のリポへ入れる。
 
-    python3 <claude-rules>/tools/loop-scaffold.py <対象リポ> --profile dev|generic [--dry-run] [--force] [--no-settings]
+    python3 <claude-rules>/tools/loop-scaffold.py <対象リポ> --profile dev|generic [--dry-run] [--force] [--no-settings] [--enable-todo]
 
 - ひな型は templates/loop/common と templates/loop/<profile> を重ねたもの
 - 既にあるファイルは上書きしない（--force で上書き）。入れた後の微調整は対象リポで行う前提
 - 対象の .claude/settings.json に Stop / SubagentStop フックを足す（同じコマンドがあれば足さない。控えは .bak）
+- --enable-todo で、そのリポだけto-doツール（CLAUDE_CODE_ENABLE_TODO_TOOLS=1）を有効にする（全体では無効のまま）
 - 何をどこから入れたかを .claude/loop/.scaffold.json に残す（後でひな型との差分を見るため）
 - commitはしない
 """
@@ -48,7 +49,7 @@ def source_rev() -> str:
         return "unknown"
 
 
-def merge_settings(path: Path, dry: bool) -> list[str]:
+def merge_settings(path: Path, dry: bool, hooks_on: bool = True, todo: bool = False) -> list[str]:
     data = {}
     if path.exists():
         try:
@@ -56,8 +57,11 @@ def merge_settings(path: Path, dry: bool) -> list[str]:
         except json.JSONDecodeError as e:
             raise SystemExit(f"loop-scaffold: {path} をJSONとして読めません（{e}）。手で直してから再実行してください")
     added = []
-    hooks = data.setdefault("hooks", {})
-    for event, cmd in HOOKS.items():
+    if todo and data.get("env", {}).get("CLAUDE_CODE_ENABLE_TODO_TOOLS") != "1":
+        data.setdefault("env", {})["CLAUDE_CODE_ENABLE_TODO_TOOLS"] = "1"
+        added.append("env.CLAUDE_CODE_ENABLE_TODO_TOOLS")
+    hooks = data.setdefault("hooks", {}) if hooks_on else {}
+    for event, cmd in (HOOKS.items() if hooks_on else ()):
         groups = hooks.setdefault(event, [])
         present = any(h.get("command") == cmd for g in groups for h in g.get("hooks", []))
         if not present:
@@ -78,6 +82,7 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="何が起きるかだけを出す")
     ap.add_argument("--force", action="store_true", help="既にあるファイルも上書きする")
     ap.add_argument("--no-settings", action="store_true", help=".claude/settings.json にフックを足さない")
+    ap.add_argument("--enable-todo", action="store_true", help="このリポだけto-doツールを有効にする（settings.jsonのenv）")
     a = ap.parse_args(argv)
 
     target = Path(a.target).resolve()
@@ -100,7 +105,9 @@ def main(argv=None) -> int:
             if dst.suffix in (".py", ".sh"):
                 dst.chmod(0o755)
 
-    added = [] if a.no_settings else merge_settings(target / ".claude" / "settings.json", a.dry_run)
+    settings = target / ".claude" / "settings.json"
+    added = merge_settings(settings, a.dry_run, hooks_on=not a.no_settings, todo=a.enable_todo) \
+        if (not a.no_settings or a.enable_todo) else []
 
     if not a.dry_run:
         meta = target / ".claude" / "loop" / ".scaffold.json"
@@ -114,10 +121,10 @@ def main(argv=None) -> int:
             print(f"  {label}: {len(xs)}件")
             for x in xs:
                 print(f"    {x}")
-    if a.no_settings:
+    if a.no_settings and not added:
         print("  settings.json: 触っていません（--no-settings）。フックを使うなら手で足してください")
     elif added:
-        print(f"  settings.json: {', '.join(added)} フックを足しました")
+        print(f"  settings.json: {', '.join(added)} を足しました")
     else:
         print("  settings.json: フックは登録済み")
     if not a.dry_run:

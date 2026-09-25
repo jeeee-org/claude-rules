@@ -75,6 +75,20 @@ class ScaffoldTest(unittest.TestCase):
         self.assertEqual(len(data['hooks']['SubagentStop']), 1)
         self.assertTrue((self.root / '.claude/settings.json.bak').exists())
 
+    def test_to_doはリポ単位で指定した時だけ有効にする(self):
+        scaffold(self.root, '--profile', 'dev')
+        data = json.loads((self.root / '.claude/settings.json').read_text())
+        self.assertNotIn('env', data)
+        scaffold(self.root, '--profile', 'dev', '--enable-todo')
+        data = json.loads((self.root / '.claude/settings.json').read_text())
+        self.assertEqual(data['env'], {'CLAUDE_CODE_ENABLE_TODO_TOOLS': '1'})
+        self.assertEqual(len(data['hooks']['Stop']), 1)
+
+    def test_フックなしでもto_doだけは足せる(self):
+        scaffold(self.root, '--profile', 'dev', '--no-settings', '--enable-todo')
+        data = json.loads((self.root / '.claude/settings.json').read_text())
+        self.assertEqual(data, {'env': {'CLAUDE_CODE_ENABLE_TODO_TOOLS': '1'}})
+
     def test_settingsを触らない指定(self):
         scaffold(self.root, '--profile', 'dev', '--no-settings')
         self.assertFalse((self.root / '.claude/settings.json').exists())
