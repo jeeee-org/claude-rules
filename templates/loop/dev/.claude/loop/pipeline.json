@@ -8,8 +8,16 @@
   "limits": {
     "time_budget_hard": false,
     "max_total_rework": 10,
-    "max_shards": 30
+    "max_shards": 30,
+    "max_items": 100
   },
+  "must_stop": [
+    "共有ブランチへのpush",
+    "PRのマージ",
+    "デプロイ・本番への反映",
+    "外へのメッセージの送信",
+    "データの削除"
+  ],
   "sunset_min_runs": 10,
   "judge": {
     "agent": "gate-judge",

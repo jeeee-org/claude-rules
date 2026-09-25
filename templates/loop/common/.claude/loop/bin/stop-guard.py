@@ -73,7 +73,7 @@ def main() -> int:
         g["fingerprint"] = fp
         lc.save_json(lc.STATE, st)
 
-    budget = p.get("time_budget_sec")
+    budget = lc.effective_budget(st, p)
     elapsed = int(lc.now() - st["started_at"])
     time_line = f"\nelapsed {elapsed}s / {budget}s" if budget else ""
     reason = (

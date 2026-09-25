@@ -57,14 +57,19 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 
 ## 人の出番
 
-- 工程が「止まっている」: `loopctl.py status`で理由を見て、判断待ちなら`loopctl.py decide <工程> pass|fail --note "<理由>"`、外部待ちが解けたら`loopctl.py unblock <工程>`
+- 人待ちをまとめて見る: `loopctl.py pending`。工程役の問い（問い・選択肢・推奨・判断役の答え）と、判断役が人へ回した判断（推奨はpass|fail）と、理由だけの停止が並ぶ
+- まとめて答える: `loopctl.py answer <工程>=<選択肢> <工程>=<選択肢> ... --note "<理由>"`。推奨どおりなら`<工程>=推奨`、名指ししていない分を全部推奨どおりにするなら`--recommended`。**どれを選んだかは`judgments.jsonl`に残り**、判断役の学習の材料になる（`calibrate --apply`で`lessons.md`の「人の裁定」に載る）
+- 1工程ずつなら従来どおり`loopctl.py decide <工程> pass|fail --note "<理由>"`。外部待ちが解けたら`loopctl.py unblock <工程>`
+- 実行全体の上限で止まった: 時間なら`loopctl.py resume --extend <秒>`（予算を延ばして再開。延ばさずに`resume`するとすぐまた止まる）。ほかの上限は`pipeline.json`の`limits`を見直し、`accept-self`してから`resume`
 - 自動で通った判断が誤っていた: `loopctl.py override <判断id> <正しい答え> --note "<理由>"`（判断idは`judge/judgments.jsonl`）
 - 人が付き添って対話で回す時: `loopctl.py pause`（Stopフックの催促が止まる。工程役の報告の形は引き続き確かめる）
 - 実行を閉じる: `loopctl.py finish`（以後は工程役の報告の形も確かめない）
 
 ## 判断役を育てる（較正）
 
-判断役は、答えに確信度を添えて返す。loopctlは確信度が閾値以上の答えだけを自動で採り、それ以外は人へ回す。人の答え（`decide`・`override`）は正解として`judgments.jsonl`に溜まる。
+判断役は、答えに確信度を添えて返す。loopctlは確信度が閾値以上の答えだけを自動で採り、それ以外は人へ回す。人の答え（`decide`・`answer`・`override`）は正解として`judgments.jsonl`に溜まる。
+
+工程役が人に聞く問い（`block --ask`）も同じ仕組みに乗る。統括役は止める前に判断役へ問いを渡し、その答えと確信度を`block`に添える。人の答えが溜まって問いの型（`--qid`、既定は`ask:<工程の型>`）ごとに閾値が出れば、以後は閾値に届いた判断役の答えで止めずに進む（抜き取りは同じく`audit_rate`）。
 
 ```bash
 python3 .claude/loop/bin/loopctl.py calibrate          # 問いごとの正答率と、出せる閾値を見る
@@ -101,6 +106,33 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 - `sunset_min_runs`（既定10）回以上走って一度も落ちていない検査を「外す候補」に挙げる。自動では外さない（当たりゼロには、上流で捕れている・見えていない・抑止が効いている、の3通りがある）。
 - 昇格したルールは工程あたり`judge.max_promoted_per_step`（既定3）本まで。足すなら1本見直す。
 
+## 項目ごとに回す（per_item）
+
+1件ずつ独立に「決める → 測る → 直す → 記録」のように回すときは、`pipeline.json`に工程の型を書く。`begin`で項目ごとに展開され、工程は`<項目>/<工程>`のidになる。1件が人待ちで止まっても、ほかの項目は進む。
+
+```json
+"per_item": {
+  "items": [],
+  "after": ["triage"],
+  "steps": [
+    {"id": "decide", "worker": "step-worker", "reviewer": "step-reviewer", "gate": "gates/outputs.sh",
+     "instructions": "{item} について決める", "outputs": ["loop-out/{item}/decide.md"], "judge_questions": []},
+    {"id": "fix", "worker": "step-worker", "reviewer": "step-reviewer", "gate": "gates/outputs.sh",
+     "instructions": "{item} の決定どおりに直す", "outputs": ["loop-out/{item}/fix.md"], "judge_questions": []}
+  ]
+}
+```
+
+- 型の中の`{item}`は項目idに置き換わる。項目の中では直前の型の工程が前提になる。最初の工程の前提は`after`（共通の工程）
+- 項目の一覧は`begin --items-file <一覧>`（1行1件、またはJSONの配列）か`--items a b c`。実行中に足すのは`loopctl.py add-item <id> ...`。一覧は実行の状態に持つので、`pipeline.json`（ループ自身）を書き換えずに済む。上限は`limits.max_items`
+- 全項目が済んでから動く共通の工程は、`"after": ["*/fix"]`のように書く
+- 判断役の問いのidは項目をまたいで同じなので、較正と誤りの例は項目の間で共有される。ルールの候補も、パスの項目idを`{item}`に戻して型の単位で育つ
+- 工程役とゲートは、展開後の定義を`loopctl.py show <工程>`で読む（ゲートには`LOOP_ITEM`・`LOOP_OUTPUTS`も渡る）
+
+## 必ず止まる場面（must_stop）
+
+統括役は、`pipeline.json`の`must_stop`に挙がった操作の直前で必ず止まる。既定は共有ブランチへのpush・PRのマージ・デプロイと本番への反映・外へのメッセージの送信・データの削除。記録のpushが既定の手順のリポなどでは、ここから外す（取り消せない操作は、この一覧にかかわらず人に確かめる）。
+
 ## ループ自身を改修しない
 
 実行を始めた時点で、ループ自身のファイル（`.claude/loop/bin/`・`gates/`・`pipeline.json`・`.claude/agents/`・`.claude/settings.json`）のハッシュを控え、ゲートのたびに突き合わせる。変わっていれば`loop-self`の検査で不合格。人が意図して直したなら`loopctl.py accept-self`で控え直す。
@@ -115,6 +147,7 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 | `limits.time_budget_hard` | false | trueなら`time_budget_sec`を打ち切りにする（超えたら次の着手とStopフックで実行を止める） |
 | `limits.max_total_rework` | 10 | **実行全体**の差し戻しの合計の上限（`max_rework`は1工程あたり） |
 | `limits.max_shards` | 30 | 実行全体で着手した分担の数の上限 |
+| `limits.max_items` | 100 | 項目ごとに回す時の項目の数の上限（`begin`と`add-item`で確かめる） |
 | `sunset_min_runs` | 10 | 一度も落ちない検査を外す候補に挙げるまでの実行回数 |
 | `judge.max_promoted_per_step` | 3 | 工程あたりの採用中のルールの上限 |
 | `judge.default_threshold` | 0.9 | 較正前に使う閾値 |

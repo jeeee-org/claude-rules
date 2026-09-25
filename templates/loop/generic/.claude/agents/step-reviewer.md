@@ -8,7 +8,7 @@ color: orange
 
 # 汎用のレビュー役
 
-統括役から工程idを受け取る。`.claude/loop/pipeline.json`でその工程の`instructions`・`outputs`・`review_focus`を読み、成果物が`instructions`を満たし、次の工程へ渡してよいかの目で読む。
+統括役から工程idを受け取る。`python3 .claude/loop/bin/loopctl.py show <工程>`（読むだけ）でその工程の`instructions`・`outputs`・`review_focus`を読み、成果物が`instructions`を満たし、次の工程へ渡してよいかの目で読む。
 
 - 観点は`review_focus`。書かれていなければ「instructionsを満たすか・事実の誤り・抜け」。
 - 指摘は確かめたものだけを書く。推測は「未確認」と明記する。

@@ -339,6 +339,92 @@ class LoopRunTest(unittest.TestCase):
         fn(cfg)
         (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
 
+    # --- 人に選んでもらう問い・人待ちの一覧・まとめての答え ---
+
+    def ask(self, *extra):
+        self.ctl('begin')
+        self.ctl('start', 'requirements')
+        return self.ctl('block', 'requirements', '仕様が2通りに読める', '--ask', 'ログインの失敗回数の上限はどちらか',
+                        '--options', 'A', 'B', '--recommend', 'A', *extra)
+
+    def rows(self):
+        return [json.loads(l) for l in (self.loop / 'judge/judgments.jsonl').read_text().splitlines()]
+
+    def test_工程役の問いは選択肢と推奨ごと記録し人の答えを残す(self):
+        self.ask('--judge-answer', 'B', '--confidence', '0.6')
+        s = self.state()['steps']['requirements']
+        self.assertEqual(s['status'], 'blocked')
+        self.assertEqual(s['ask']['options'], ['A', 'B'])
+        out = self.ctl('pending').stdout
+        self.assertIn('ログインの失敗回数の上限', out)
+        self.assertIn('推奨: A', out)
+        self.assertIn('判断役: B', out)
+        self.ctl('answer', 'requirements=B', '--note', '規約の3条')
+        s = self.state()['steps']['requirements']
+        self.assertEqual(s['status'], 'in_progress')
+        self.assertEqual(s['answered'][-1]['answer'], 'B')
+        r = self.rows()[-1]
+        self.assertEqual((r['kind'], r['recommend'], r['answer'], r['human_answer']), ('ask', 'A', 'B', 'B'))
+
+    def test_推奨どおりの答えもどれを選んだかが残る(self):
+        self.ask()
+        self.ctl('answer', '--recommended')
+        self.assertEqual(self.rows()[-1]['human_answer'], 'A')
+        self.assertIn('人の答え', self.state()['steps']['requirements']['notes'][-1]['text'])
+
+    def test_選択肢の外の答えは受け付けず何も変えない(self):
+        self.ask()
+        p = self.ctl('answer', 'requirements=C', ok=False)
+        self.assertIn('選択肢に C はありません', p.stderr)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'blocked')
+
+    def test_判断役の人待ちもまとめて答えられる(self):
+        self.to_judge()
+        ans = {'answers': [{'id': 'req-intent', 'answer': 'yes', 'confidence': 0.6}]}
+        self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
+        pend = json.loads(self.ctl('pending', '--json').stdout)
+        self.assertEqual((pend[0]['kind'], pend[0]['recommend']), ('judge', 'pass'))
+        self.ctl('answer', '--recommended')
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'done')
+        self.assertEqual(self.rows()[-1]['human_answer'], 'yes')
+
+    def test_人の裁定は誤りの例と並べて判断役に見せる(self):
+        self.ask()
+        self.ctl('answer', 'requirements=B', '--note', '規約の3条')
+        self.ctl('calibrate', '--apply')
+        lessons = (self.loop / 'judge/lessons.md').read_text()
+        self.assertIn('人の裁定', lessons)
+        self.assertIn('人の答えは`B`', lessons)
+
+    def test_較正で閾値が出た問いは判断役の答えで止めずに進める(self):
+        (self.loop / 'judge').mkdir(exist_ok=True)
+        (self.loop / 'judge/calibration.json').write_text(json.dumps({'thresholds': {'ask:requirements': 0.8}}))
+        self.set_pipeline(lambda c: c['judge'].__setitem__('audit_rate', 0))
+        p = self.ask('--judge-answer', 'A', '--confidence', '0.9')
+        self.assertIn('判断役の答え A で進めます', p.stdout)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'in_progress')
+        self.assertEqual(self.rows()[-1]['decision'], 'auto_answer')
+
+    def test_理由だけの停止には答えられずunblockを案内する(self):
+        self.ctl('begin')
+        self.ctl('block', 'requirements', '外部の返事待ち')
+        p = self.ctl('answer', 'requirements=A', ok=False)
+        self.assertIn('unblock', p.stderr)
+
+    # --- 時間の上限で止まった後の再開 ---
+
+    def test_時間で止まった実行は延ばして再開できる(self):
+        self.set_pipeline(lambda c: (c.__setitem__('time_budget_sec', 60), c['limits'].__setitem__('time_budget_hard', True)))
+        self.ctl('begin')
+        self.env['LOOP_NOW'] = '1100'
+        self.stop()
+        p = self.ctl('resume')
+        self.assertIn('--extend', p.stdout)
+        self.ctl('resume', '--extend', '3600')
+        self.assertIsNone(self.stop().get('systemMessage'))
+        self.assertTrue(self.state()['active'])
+        self.assertIn('延長3600s', self.ctl('status').stdout)
+
     def test_止まった工程の後ろの工程は催促しない(self):
         self.ctl('begin')
         self.ctl('block', 'requirements', '顧客の回答待ち')
@@ -672,6 +758,104 @@ class ScopeGateTest(unittest.TestCase):
     def test_一覧が無ければ落とす(self):
         (self.root / 'docs/loop/design.md').write_text('# 設計\n')
         self.assertIn('一覧が無い', self.scope().stdout)
+
+
+class PerItemTest(unittest.TestCase):
+    """per_item: 項目の一覧 × 工程の型を begin で展開し、項目ごとに独立して止まる。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        (self.root / '.git').mkdir()
+        scaffold(self.root, '--profile', 'generic', '--no-settings')
+        self.loop = self.root / '.claude/loop'
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['steps'] = [dict(cfg['steps'][0], id='triage', outputs=['loop-out/triage.md'])]
+        cfg['steps'].append({'id': 'report', 'worker': 'step-worker', 'reviewer': None, 'gate': None,
+                             'after': ['*/fix'], 'judge_questions': []})
+        cfg['per_item'] = {'after': ['triage'], 'items': ['q1'], 'steps': [
+            {'id': 'decide', 'worker': 'step-worker', 'reviewer': None, 'gate': 'gates/outputs.sh',
+             'instructions': '{item} について決める', 'outputs': ['loop-out/{item}/decide.md'], 'judge_questions': [
+                 {'id': 'grounded', 'question': '{item} の決定に根拠があるか', 'answers': ['yes', 'no'], 'pass': 'yes'}]},
+            {'id': 'fix', 'worker': 'step-worker', 'reviewer': None, 'gate': None, 'judge_questions': []}]}
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+        self.env = dict(os.environ, LOOP_DIR=str(self.loop), LOOP_NOW='1000')
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def ctl(self, *args, ok=True):
+        p = subprocess.run([sys.executable, str(self.loop / 'bin/loopctl.py'), *args],
+                           capture_output=True, text=True, env=self.env, cwd=self.root)
+        if ok:
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        return p
+
+    def state(self):
+        return json.loads((self.loop / 'state.json').read_text())
+
+    def done(self, step):
+        self.ctl('start', step)
+        self.ctl('submit', step)
+
+    def test_項目ごとに工程を展開し型の中身を置き換える(self):
+        self.ctl('begin', '--items', 'q1', 'q2')
+        self.assertIn('q2/decide', self.state()['steps'])
+        d = json.loads(self.ctl('show', 'q2/decide').stdout)
+        self.assertEqual(d['instructions'], 'q2 について決める')
+        self.assertEqual(d['outputs'], ['loop-out/q2/decide.md'])
+        self.assertEqual(d['judge_questions'][0]['id'], 'grounded')
+        self.assertEqual(d['after'], ['triage'])
+
+    def test_項目ごとに独立して止まり他の項目は進む(self):
+        self.ctl('begin', '--items', 'q1', 'q2')
+        (self.root / 'loop-out').mkdir()
+        (self.root / 'loop-out/triage.md').write_text('仕分け\n')
+        self.done('triage'); self.ctl('review', 'triage', 'pass'); self.ctl('gate', 'triage')
+        self.ctl('start', 'q1/decide')
+        self.ctl('block', 'q1/decide', '人の裁定が要る')
+        (self.root / 'loop-out/q2').mkdir()
+        (self.root / 'loop-out/q2/decide.md').write_text('決めた\n')
+        self.done('q2/decide')
+        self.ctl('gate', 'q2/decide')
+        self.assertEqual(self.state()['steps']['q2/decide']['status'], 'judge')
+        ready = [x['id'] for x in json.loads(self.ctl('next').stdout)]
+        self.assertNotIn('q1/fix', ready)
+        self.assertNotIn('report', ready)  # 全項目の fix を待つ
+
+    def test_実行中に項目を足してもループ自身は変わらない(self):
+        self.ctl('begin')
+        before = (self.loop / 'pipeline.json').read_bytes()
+        self.ctl('add-item', 'q3')
+        self.assertEqual(self.state()['items'], ['q1', 'q3'])
+        self.assertEqual(self.state()['steps']['q3/decide']['status'], 'pending')
+        self.assertEqual((self.loop / 'pipeline.json').read_bytes(), before)
+
+    def test_項目idの形と数の上限を確かめる(self):
+        self.assertIn('使えない文字', self.ctl('begin', '--items', 'a b', ok=False).stderr)
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['limits']['max_items'] = 1
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+        self.assertIn('max_items', self.ctl('begin', '--items', 'a', 'b', ok=False).stderr)
+        self.ctl('begin', '--items', 'a')
+        self.assertIn('max_items', self.ctl('add-item', 'b', ok=False).stderr)
+
+    def test_ルールの候補は項目をまたいで同じ型で育つ(self):
+        self.ctl('begin', '--items', 'q1', 'q2')
+        st = self.state()
+        for sid in ('triage',):
+            st['steps'][sid]['status'] = 'done'
+        for it in ('q1', 'q2'):
+            st['steps'][f'{it}/decide']['status'] = 'judge'
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        for it in ('q1', 'q2'):
+            ans = {'answers': [{'id': 'grounded', 'answer': 'no', 'confidence': 0.99, 'reason': '節が無い',
+                                'rule_candidate': {'kind': 'need_match', 'args': [f'loop-out/{it}/decide.md', '^## 根拠']}}]}
+            self.ctl('judge', f'{it}/decide', '--answers', json.dumps(ans))
+        rules = json.loads((self.loop / 'judge/rules.json').read_text())['rules']
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]['step'], 'decide')
+        self.assertEqual(rules[0]['check']['args'][0], 'loop-out/{item}/decide.md')
 
 
 class UpdateTest(unittest.TestCase):

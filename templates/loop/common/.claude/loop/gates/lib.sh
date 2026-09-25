@@ -113,8 +113,9 @@ need_cmd() {
   if [ $rc -eq 0 ]; then ok "$label: $cmd"; else echo "$out" | tail -30; ng "$label が失敗（exit $rc）: $cmd"; fi
 }
 
-# pipeline.json のこの工程の outputs（成果物のパス一覧）
+# この工程の outputs（成果物のパス一覧）。loopctlから呼ばれた時は展開済みの値（LOOP_OUTPUTS）を使う
 step_outputs() {
+  if [ -n "${LOOP_OUTPUTS+x}" ]; then printf '%s\n' "$LOOP_OUTPUTS"; return; fi
   python3 - "$LOOP_DIR/pipeline.json" "${LOOP_STEP:?}" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
