@@ -40,6 +40,15 @@ def main() -> int:
     if data.get("background_tasks"):
         return 0
 
+    why = lc.limit_reason(st, p)
+    if why:
+        with lc.locked():
+            st = lc.load_json(lc.STATE)
+            lc.halt(st, why)
+            lc.save_json(lc.STATE, st)
+        print(json.dumps({"systemMessage": f"ループ: {why}。実行を止めました（`loopctl.py status`）"}, ensure_ascii=False))
+        return 0
+
     items = lc.open_items(st, p)
     if not items:
         return 0  # 全部終わった、または残りは人待ち（止まってよい止まり方）

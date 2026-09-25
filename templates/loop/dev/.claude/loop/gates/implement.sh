@@ -7,5 +7,6 @@ need_cmd "ビルド" "${BUILD_CMD:-}"
 need_cmd "リント" "${LINT_CMD:-}"
 need_cmd "テスト" "${TEST_CMD:-}"
 # 例: 衝突マーカー・デバッグ出力の残りを禁止する（リポに合わせて足し引きする）
+check_key "衝突マーカー"
 if git grep -nE '^(<<<<<<<|>>>>>>>)' -- . >/dev/null 2>&1; then ng "衝突マーカーが残っている"; else ok "衝突マーカーは無い"; fi
 gate_end

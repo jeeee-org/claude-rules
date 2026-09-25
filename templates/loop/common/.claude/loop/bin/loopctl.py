@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import contextlib
 import fcntl
 import hashlib
@@ -20,6 +21,7 @@ import os
 import subprocess
 import sys
 import time
+from fnmatch import fnmatch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -33,6 +35,9 @@ JUDGMENTS = JUDGE_DIR / "judgments.jsonl"
 CALIBRATION = JUDGE_DIR / "calibration.json"
 LESSONS = JUDGE_DIR / "lessons.md"
 RULES = JUDGE_DIR / "rules.json"
+GATE_STATS = LOOP_DIR / "stats" / "gates.jsonl"
+# 実行中に工程役が書き換えてはいけない、ループ自身のファイル（改善案6: ループの中でループを改修しない）
+SELF_FILES = ("bin/*.py", "gates/*", "pipeline.json", "../agents/*.md", "../settings.json")
 REPO = LOOP_DIR.parent.parent
 LOCK = LOOP_DIR / ".state.lock"
 
@@ -171,6 +176,9 @@ def fingerprint(st: dict) -> str:
 
 def render(st: dict, p: dict) -> str:
     lines = [f"実行 {st['run_id']}  状態: {'完了（閉じた）' if st.get('finished') else '進行中' if st['active'] else '一時停止中'}"]
+    why = limit_reason(st, p) if st.get("active") else None
+    if why:
+        lines.append(f"※ {why}（次の着手で止まります）")
     if st.get("halted"):
         lines.append(f"※ {st['halted']}（`resume`で再開）")
     el = int(now() - st["started_at"])
@@ -220,6 +228,43 @@ def preexisting_changes() -> list[str]:
     return sorted(set(out))
 
 
+def self_snapshot() -> dict:
+    """ループ自身のファイルのハッシュ。実行開始時に控え、ゲートのたびに突き合わせる。"""
+    snap = {}
+    for pat in SELF_FILES:
+        for f in sorted(LOOP_DIR.glob(pat)):
+            if f.is_file() and "__pycache__" not in f.parts:
+                snap[str(f.resolve().relative_to(REPO))] = hashlib.sha256(f.read_bytes()).hexdigest()
+    return snap
+
+
+def self_changes(st: dict) -> list[str]:
+    base = st.get("self_snapshot")
+    if base is None:
+        return []
+    now_ = self_snapshot()
+    return sorted(k for k in set(base) | set(now_) if base.get(k) != now_.get(k))
+
+
+def limit_reason(st: dict, p: dict, adding_shard: int = 0) -> str | None:
+    """実行全体の上限（改善案2）。1工程・1停止の単位でなく、実行全体で数える。"""
+    lim = p.get("limits", {})
+    budget = p.get("time_budget_sec")
+    if budget and lim.get("time_budget_hard") and now() - st["started_at"] > budget:
+        return f"時間の上限（{budget}s）を超えました"
+    total = sum(x.get("rework", 0) for x in st["steps"].values())
+    if lim.get("max_total_rework") is not None and total > lim["max_total_rework"]:
+        return f"実行全体の差し戻しが上限（{lim['max_total_rework']}回）を超えました"
+    if lim.get("max_shards") is not None and st.get("shards_started", 0) + adding_shard > lim["max_shards"]:
+        return f"着手した分担の数が上限（{lim['max_shards']}）を超えました"
+    return None
+
+
+def halt(st: dict, reason: str) -> None:
+    st["active"] = False
+    st["halted"] = reason
+
+
 def cmd_begin(a):
     p = pipeline()
     with locked():
@@ -233,6 +278,8 @@ def cmd_begin(a):
             "started_at": now(),
             "base_commit": head_commit(),
             "base_preexisting": preexisting_changes(),
+            "self_snapshot": self_snapshot(),
+            "shards_started": 0,
             "goal": a.goal or "",
             "steps": {s["id"]: {"status": "pending", "shards": {}, "rework": 0, "notes": [], "blocker": None}
                       for s in p["steps"] if not a.only or s["id"] in a.only},
@@ -278,8 +325,14 @@ def cmd_start(a):
             raise LoopError(f"{a.step} は止まっています（{s.get('blocker')}）。解けたら `unblock {a.step}`")
         if s["status"] in ("review", "gate", "judge"):
             raise LoopError(f"{a.step} は提出済みです（いま {LABEL[s['status']]}）。やり直すなら `reopen {a.step}`")
+        why = limit_reason(st, p, adding_shard=1)
+        if why:
+            halt(st, why)
+            save_json(STATE, st)
+            raise LoopError(f"{why}。実行を止めました（`status`で確かめ、続けるなら上限を見直して `resume`）")
         s["status"] = "in_progress"
         s["shards"][a.shard] = "working"
+        st["shards_started"] = st.get("shards_started", 0) + 1
         note(s, f"着手 shard={a.shard}")
         save_json(STATE, st)
     print(f"{a.step} を作業中にしました（shard={a.shard}）")
@@ -368,9 +421,15 @@ def cmd_gate(a):
         lines = ["判断役から昇格したルール:"]
         for r in promoted:
             passed, msg = rl.evaluate(r["check"], REPO)
-            lines.append(f"  {'✔' if passed else '✖'} {r['id']}（問い{r['question']}）: {msg}")
+            lines.append(f"  {'✔' if passed else '✖'} {r['id']}（問い{r['question']}）: {msg}  〔{r['id']}〕")
             ok = ok and passed
         out = out + "\n" + "\n".join(lines)
+    changed_self = self_changes(state())
+    if changed_self:
+        out += "\nループ自身の改修（実行中は禁止。人が直したなら `loopctl.py accept-self`）:\n" + "\n".join(
+            f"  ✖ {f} が実行開始後に変わった  〔loop-self〕" for f in changed_self)
+        ok = False
+    record_gate_stats(state()["run_id"], a.step, out)
     with locked():
         st = state()
         s = st_step(st, a.step)
@@ -645,6 +704,11 @@ def cmd_rules(a):
         print(f"    実績: 検出{s['fired']}回（正しい{s['tp']}・誤り{s['fp']}・未確定{s['unknown']}）、見逃し{s['missed']}回")
         if ready:
             print(f"    → 昇格の条件を満たしました（正しい検出{need}回以上・誤りなし）。採用するなら `loopctl.py promote {r['id']}`")
+        elif r["status"] == "promoted":
+            g = gate_stats().get((r["step"], r["id"]))
+            need2 = p.get("sunset_min_runs", 10)
+            if g and g["runs"] >= need2 and g["fails"] == 0:
+                print(f"    → 採用後{g['runs']}回走って一度も落としていません。外す候補（`loopctl.py retire {r['id']}`）")
         elif r["status"] == "shadow" and s["fp"]:
             print(f"    → 誤検出があります。廃止するなら `loopctl.py retire {r['id']}`")
 
@@ -654,6 +718,11 @@ def set_rule_status(rid: str, status: str, force: bool = False) -> dict:
     for r in rs:
         if r["id"] == rid:
             if status == "promoted" and not force:
+                cap = pipeline().get("judge", {}).get("max_promoted_per_step", 3)
+                live = [x for x in rs if x["status"] == "promoted" and x["step"] == r["step"]]
+                if len(live) >= cap:
+                    raise LoopError(f"工程{r['step']}の採用中のルールが上限（{cap}本）です。1本足すなら1本見直す"
+                                    f"（`loopctl.py gate-stats`で当たらないものを確かめて `retire`）。承知で足すなら --force")
                 s = rule_stats(rid)
                 need = pipeline().get("judge", {}).get("promote_min_fires", 5)
                 if s["fp"] or s["tp"] < need:
@@ -673,6 +742,73 @@ def cmd_promote(a):
 def cmd_retire(a):
     r = set_rule_status(a.rule_id, "retired")
     print(f"{r['id']} を廃止しました")
+
+
+# ---------- 検査ごとの打率と、外す候補（サンセット） ----------
+
+LINE_RE = re.compile(r"^\s*(✔|✖)\s+(.*?)(?:\s*〔(.+)〕)?\s*$")
+
+
+def record_gate_stats(run: str, step: str, out: str) -> None:
+    """ゲートの出力を検査の鍵ごとに束ね、1回のゲートにつき1行ずつ記録する（鍵の無い行は本文を鍵にする）。"""
+    agg: dict[str, bool] = {}
+    for l in out.splitlines():
+        m = LINE_RE.match(l)
+        if not m:
+            continue
+        key = m.group(3) or m.group(2)
+        agg[key] = agg.get(key, True) and m.group(1) == "✔"
+    if not agg:
+        return
+    GATE_STATS.parent.mkdir(parents=True, exist_ok=True)
+    with open(GATE_STATS, "a", encoding="utf-8") as fh:
+        for k, ok in agg.items():
+            fh.write(json.dumps({"t": now(), "run": run, "step": step, "key": k, "ok": ok}, ensure_ascii=False) + "\n")
+
+
+def gate_stats() -> dict:
+    st: dict[tuple, dict] = {}
+    if not GATE_STATS.exists():
+        return st
+    for l in GATE_STATS.read_text(encoding="utf-8").splitlines():
+        if not l.strip():
+            continue
+        r = json.loads(l)
+        x = st.setdefault((r["step"], r["key"]), {"runs": 0, "fails": 0, "last_fail": None})
+        x["runs"] += 1
+        if not r["ok"]:
+            x["fails"] += 1
+            x["last_fail"] = r["t"]
+    return st
+
+
+def cmd_gate_stats(a):
+    p = pipeline()
+    need = p.get("sunset_min_runs", 10)
+    stats = gate_stats()
+    if not stats:
+        print("ゲートの記録がまだありません")
+        return
+    print(f"{'工程':<14}{'実行':>5}{'不合格':>7}  検査")
+    cands = []
+    for (step, key), x in sorted(stats.items()):
+        print(f"{step:<14}{x['runs']:>5}{x['fails']:>7}  {key}")
+        if x["runs"] >= need and x["fails"] == 0:
+            cands.append((step, key, x["runs"]))
+    if cands:
+        print(f"\n外す候補（{need}回以上走って一度も落ちていない）:")
+        for step, key, n in cands:
+            print(f"  - 工程{step}: {key}（{n}回）")
+        print("  ※ 当たりゼロには「上流で捕れている」「見えていない」「抑止が効いている」の3通りがある。外すかは人が決める。"
+              "ゲートのスクリプトから行を消す／昇格したルールなら `loopctl.py retire <id>`")
+
+
+def cmd_accept_self(a):
+    with locked():
+        st = state()
+        st["self_snapshot"] = self_snapshot()
+        save_json(STATE, st)
+    print("ループ自身のファイルの現状を、この実行の基準として控え直しました")
 
 
 # ---------- その他の遷移 ----------
@@ -747,6 +883,8 @@ def main(argv=None):
     c = sub.add_parser("calibrate"); c.add_argument("--apply", action="store_true"); c.add_argument("--target", type=float)
     c.add_argument("--min-samples", type=int); c.add_argument("--lessons", type=int, default=20)
     sub.add_parser("rules", help="判断役から出たルールの候補と実績")
+    sub.add_parser("gate-stats", help="検査ごとの打率と、外す候補")
+    sub.add_parser("accept-self", help="人が直したループ自身のファイルを、この実行の基準として控え直す")
     pr = sub.add_parser("promote", help="ルールを決定論ゲートへ採用する（人が承認）"); pr.add_argument("rule_id"); pr.add_argument("--force", action="store_true")
     rt = sub.add_parser("retire", help="ルールを廃止する"); rt.add_argument("rule_id")
     bl = sub.add_parser("block"); bl.add_argument("step"); bl.add_argument("reason")
@@ -760,7 +898,8 @@ def main(argv=None):
         {
             "begin": cmd_begin, "status": cmd_status, "next": cmd_next, "start": cmd_start, "submit": cmd_submit,
             "review": cmd_review, "gate": cmd_gate, "judge": cmd_judge, "decide": cmd_decide, "override": cmd_override,
-            "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
+            "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire,
+            "gate-stats": cmd_gate_stats, "accept-self": cmd_accept_self, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
             "resume": lambda a: set_active(True, "再開しました"),
             "finish": lambda a: set_active(False, "実行を閉じました", finished=True),

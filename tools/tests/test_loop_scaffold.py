@@ -495,6 +495,110 @@ class LoopRunTest(unittest.TestCase):
         self.ctl('gate', 'requirements')
         self.assertEqual(self.state()['steps']['requirements']['status'], 'judge')
 
+    # --- 歯止め（2026-09-25: cadenceの振り返りと別PCの失敗事例から） ---
+
+    def gate_fail_requirements(self):
+        self.ctl('start', 'requirements'); self.ctl('submit', 'requirements'); self.ctl('review', 'requirements', 'pass')
+        return self.ctl('gate', 'requirements', ok=False)
+
+    def stats_rows(self):
+        f = self.loop / 'stats/gates.jsonl'
+        return [json.loads(l) for l in f.read_text().splitlines()] if f.exists() else []
+
+    def test_検査ごとの合否を鍵で記録する(self):
+        self.ctl('begin')
+        self.gate_fail_requirements()
+        rows = self.stats_rows()
+        keys = {r['key']: r['ok'] for r in rows}
+        self.assertFalse(keys['need_file docs/loop/requirements.md'])
+        self.assertIn('forbid_match docs/loop/requirements.md TBD|TODO|要確認|\\?\\?\\?', keys)
+
+    def test_一度も落ちない検査を外す候補に挙げる(self):
+        self.set_pipeline(lambda c: c.__setitem__('sunset_min_runs', 2))
+        self.ctl('begin')
+        self.gate_fail_requirements()
+        self.gate_fail_requirements()
+        out = self.ctl('gate-stats').stdout
+        self.assertIn('外す候補', out)
+        cand = out.split('外す候補')[1]
+        self.assertIn('forbid_match', cand)
+        self.assertNotIn('need_file', cand)
+
+    def test_実行中にループ自身が変わればゲートで落とし控え直せば通す(self):
+        self.ctl('begin')
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['max_rework'] = 9
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg))
+        self.write_requirements()
+        p = self.gate_fail_requirements()
+        self.assertIn('loop-self', p.stdout)
+        self.assertIn('pipeline.json', self.state()['steps']['requirements']['notes'][-1]['text'])
+        self.ctl('accept-self')
+        self.ctl('start', 'requirements'); self.ctl('submit', 'requirements'); self.ctl('review', 'requirements', 'pass')
+        self.ctl('gate', 'requirements')
+
+    def test_実行全体の差し戻しの上限で止まる(self):
+        self.set_pipeline(lambda c: c['limits'].__setitem__('max_total_rework', 1))
+        self.ctl('begin')
+        for _ in range(2):
+            self.ctl('start', 'requirements'); self.ctl('submit', 'requirements')
+            self.ctl('review', 'requirements', 'fail')
+        p = self.ctl('start', 'requirements', ok=False)
+        self.assertIn('実行全体の差し戻しが上限', p.stderr)
+        st = self.state()
+        self.assertFalse(st['active'])
+        self.assertIn('上限', st['halted'])
+
+    def test_分担の数の上限で止まる(self):
+        self.set_pipeline(lambda c: c['limits'].__setitem__('max_shards', 1))
+        self.ctl('begin')
+        self.ctl('start', 'requirements', '--shard', 'a')
+        p = self.ctl('start', 'requirements', '--shard', 'b', ok=False)
+        self.assertIn('分担の数が上限', p.stderr)
+
+    def test_時間の上限を打ち切りにするとStopフックが止める(self):
+        self.set_pipeline(lambda c: (c.__setitem__('time_budget_sec', 60), c['limits'].__setitem__('time_budget_hard', True)))
+        self.ctl('begin')
+        self.env['LOOP_NOW'] = '1100'
+        out = self.stop()
+        self.assertIn('時間の上限', out['systemMessage'])
+        self.assertFalse(self.state()['active'])
+
+    def test_時間の予算は既定では打ち切りにしない(self):
+        self.set_pipeline(lambda c: c.__setitem__('time_budget_sec', 60))
+        self.ctl('begin')
+        self.env['LOOP_NOW'] = '1100'
+        out = self.stop()
+        self.assertEqual(out['decision'], 'block')
+        self.assertIn('elapsed 100s / 60s', out['reason'])
+
+    def test_採用中のルールは工程あたりの上限を超えて足せない(self):
+        (self.loop / 'judge').mkdir(exist_ok=True)
+        rs = [{'id': f'r-{i}', 'step': 'requirements', 'question': 'req-intent',
+               'check': {'kind': 'need_file', 'args': [f'f{i}.md']}, 'status': 'promoted' if i < 3 else 'shadow'} for i in range(4)]
+        (self.loop / 'judge/rules.json').write_text(json.dumps({'rules': rs}))
+        p = self.ctl('promote', 'r-3', ok=False)
+        self.assertIn('上限', p.stderr)
+        self.ctl('promote', 'r-3', '--force')
+
+    def test_採用後に一度も落とさないルールは外す候補に挙げる(self):
+        self.set_pipeline(lambda c: c.__setitem__('sunset_min_runs', 1))
+        (self.loop / 'judge').mkdir(exist_ok=True)
+        (self.loop / 'judge/rules.json').write_text(json.dumps({'rules': [
+            {'id': 'r-9', 'step': 'requirements', 'question': 'req-intent',
+             'check': {'kind': 'need_match', 'args': ['docs/loop/requirements.md', 'REQ']}, 'status': 'promoted'}]}))
+        self.ctl('begin')
+        self.write_requirements()
+        self.ctl('start', 'requirements'); self.ctl('submit', 'requirements'); self.ctl('review', 'requirements', 'pass')
+        self.ctl('gate', 'requirements')
+        self.assertIn('外す候補', self.ctl('rules').stdout)
+
+    def test_設計の工程は作らない選択肢を問う(self):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        q = [s for s in cfg['steps'] if s['id'] == 'design'][0]['judge_questions'][0]
+        self.assertEqual(q['id'], 'design-needed')
+        self.assertIn('remove', q['answers'])
+
 
 class ScopeGateTest(unittest.TestCase):
     """実装のゲートの範囲の検査（本物のgitリポで）。"""

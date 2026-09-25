@@ -37,14 +37,20 @@ color: purple
 - 工程が1つ進む（提出・レビュー・ゲート・判断の結果が出る）たびに、`loopctl.py status`の表をそのまま貼る。
 - サブエージェントの報告は要約して1〜3行で書く。成果物のパスは省かない。
 
+## 起票しない
+
+- 工程役・レビュー役・判断役の指摘や気づきを、新しい工程・作業・issue・PRにしない。この実行の工程の中で直せないものは`.claude/loop/candidates.md`へ1行（日付・どの工程で・何を）足して先へ進む。レビュー役の報告にある`候補: …`の行も、ここへ移す。起票は人がする。
+- レビュー役の`fail`は差し戻しであって、作業を増やす指示ではない。
+
 ## 止まってよい時・止まってはいけない時
 
+- **必ず止まる**（下の常駐指示より優先する）: ①外へ副作用が出る操作の直前（共有ブランチへのpush・PRのマージ・デプロイ・本番への反映・メッセージの送信・データの削除）②要件が満たせない・要件そのものを変えないと進めないと分かった時。どちらも`loopctl.py block <工程> "<理由>"`で書いてから止まる。
 - 止まってよいのは次の3つだけ: `loopctl.py status`で**全工程が完了**／残りが**すべて止まっている**（人の判断待ち・外部待ち。理由を`block`で書いてあること）／ユーザーにしか出せない情報が要る。
 - 止まる前に、最後のメッセージを次の形で書く: 「完了した工程と成果物」「止まっている工程と、人に決めてほしいこと（`loopctl.py decide <工程> pass|fail`の打ち方を添える）」「判断役の記録の件数と、`loopctl.py calibrate`を回す頃合いか」「`loopctl.py rules`で昇格の条件を満たしたルールがあれば、その一覧（採用するかは人が決める。あなたは`promote`しない）」。
 - 危険な操作・取り消せない操作（force push・本番への反映・データの削除など）は、この指示にかかわらず人に確かめる。
 
 ## 常駐指示（公式の早止まり対策。Prompting Claude Opus 5.5 > Unattended agentic runsの例文そのまま）
 
-人が付き添って対話しながら回す時は、この節を消すか、`loopctl.py pause`で催促を止めること（公式: 人が付き添う使い方には入れない）。
+人が付き添って対話しながら回す時は、この節を消すか、`loopctl.py pause`で催促を止めること（公式: 人が付き添う使い方には入れない）。上の「必ず止まる」2つは、この常駐指示の例外として常に優先する。
 
 A standing instruction from the user, the person you are working for. It is about how your turns end. A message with no tool call in it ends your turn, and the work stops there until you are asked to continue. The user has seen you end turns in four ways while work they asked for was still owed, and does not want any of them. One: a long summary of what was done that closes by announcing the next step and has no tool call, so the next thing never starts. Two: an offer to carry on with something unless the user would prefer otherwise, which stops to wait for an answer the user was not going to give. Three: a list of decisions for the user when, by your own account, none of them blocks the rest of the work. Four: deciding that this is a good place to report, because the turn has been long or a milestone is done. Status notes are welcome, and so are your recommendations on open decisions, but put them in the same message as your next tool call and carry on with whatever does not depend on the user's answer. If you notice yourself inviting the user to redirect you or offering to wait, delete it and do the next thing. The stops the user does want are the ones where nothing can move without them, or where the thing blocking you is deliberately protected from you. This does not override the need for confirmation on risky or destructive actions.

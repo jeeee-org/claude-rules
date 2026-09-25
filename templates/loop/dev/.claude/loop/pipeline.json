@@ -5,13 +5,20 @@
   "max_auto_continues": 3,
   "max_rework": 3,
   "time_budget_sec": null,
+  "limits": {
+    "time_budget_hard": false,
+    "max_total_rework": 10,
+    "max_shards": 30
+  },
+  "sunset_min_runs": 10,
   "judge": {
     "agent": "gate-judge",
     "default_threshold": 0.9,
     "target_accuracy": 0.95,
     "min_samples": 20,
     "audit_rate": 0.1,
-    "promote_min_fires": 5
+    "promote_min_fires": 5,
+    "max_promoted_per_step": 3
   },
   "steps": [
     {
@@ -45,6 +52,16 @@
         "docs/loop/design.md"
       ],
       "judge_questions": [
+        {
+          "id": "design-needed",
+          "question": "この変更は作るべきか（既存の仕組みを消す・使い回すだけで要件を満たせないか）",
+          "answers": [
+            "build",
+            "reuse",
+            "remove"
+          ],
+          "pass": "build"
+        },
         {
           "id": "design-fit",
           "question": "設計は既存の構造に沿い、要件を満たす中で最も単純な形か",

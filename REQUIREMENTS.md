@@ -7,6 +7,7 @@
 ## 目的・スコープ
 - Claude Code / Codexのグローバル共通ルール（`rules/*.md`）と`init-rules`スキルを、複数PCへ`install.sh`＋マーカーブロック方式で配布・同期する。
 - 対象は「全PJに恒久的に効く決まり」だけ。PJ固有の差分は各PJの`CLAUDE.md`に置く（グローバル§7）。
+- ループのひな型は**減らす仕組みを足す仕組みとセットで持つ**（検査ごとの打率と外す候補・昇格ルールの本数上限）。ループは起票せず、実行全体の上限を持ち、ループ自身を改修しない（機械で検査）。外への副作用の直前と要件が満たせない時は常駐指示より優先して止まる（2026-09-25決定。cadenceの振り返りと別PCの失敗事例から）。
 - ループのひな型の判断役は、機械的な理由の不合格に「ルールの候補」を添え、候補は影で実績を溜め、決定論ゲートへの採用は人が承認する（正しい検出5回以上・誤検出0が条件。2026-09-25決定）。
 - ループのひな型の開発用は、「実装が設計の範囲に収まるか」を判断役でなく決定論ゲートで見る（設計の`## 触ってよいファイル`と実行開始時のコミットからの差分。2026-09-25決定）。
 - 表示の設定は`settings/display.json`を正本に`install.sh`で全PCへ配る。**to-doツール（`CLAUDE_CODE_ENABLE_TODO_TOOLS`）は全体に入れず、要るリポの`.claude/settings.json`で有効にする**（2026-09-25決定）。
@@ -40,6 +41,7 @@
 ## やること / バックログ
 - 既存PJを、開いた時に`/migrate-rules`で記録ルールの改訂に揃える（checkpointの移動・`REQUIREMENTS.md`の新設・ADR節の振り分け・`NOTES.md`の整理）。checkpointを移すかはPJごとにユーザーが決める（2026-09-14時点で未移行は17PJ。kakeiboとdiscは移行済み）。
 - 他PCでclaude-rulesの**cloneを取り直して**`./install.sh`（2026-09-17にリポを作り直したため。消す前に`IMPROVEMENTS.md`への未pushの追記を確認する）。quorumは`git pull && ./install.sh`で、installがトリアージブロックの残骸を取り除く。`settings.json`の分類フック登録は各PCで手で外す。
+- ループのひな型の使いにくさ4つ（問いごとに独立して止めたい・settings.jsonがgit管理外のリポ・判断役にhaikuでは力不足・1リポに2つのループを置けない）。別PCが1回回した後にまとめて届く予定（`IMPROVEMENTS.md` 2026-09-25の先出し）。届いたら扱う。
 - ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
 - `rules/codex-global-rules.md`の圧縮（残量3,059Bで急がない。Claude側と同じ観点で他所と重複する語を畳む）。
 
