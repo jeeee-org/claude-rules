@@ -101,6 +101,42 @@ class ScaffoldTest(unittest.TestCase):
         p = scaffold(self.root, '--profile', 'dev')
         self.assertNotIn('無視対象', p.stdout)
 
+    def test_名前を付けると2つ目のループを並べて置ける(self):
+        scaffold(self.root, '--profile', 'dev')
+        p = scaffold(self.root, '--profile', 'generic', '--name', 'audit')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('claude --agent audit-loop-conductor', p.stdout)
+        ag = self.root / '.claude/agents'
+        self.assertTrue((ag / 'loop-conductor.md').exists())
+        self.assertTrue((ag / 'audit-step-worker.md').exists())
+        self.assertFalse((ag / 'step-worker.md').exists())
+        cond = (ag / 'audit-loop-conductor.md').read_text()
+        self.assertIn('name: audit-loop-conductor', cond)
+        self.assertIn('.claude/loop-audit/bin/loopctl.py', cond)
+        self.assertIn('`audit-gate-judge`を起こし', cond)
+        self.assertNotIn('.claude/loop/', cond)
+        cfg = json.loads((self.root / '.claude/loop-audit/pipeline.json').read_text())
+        self.assertEqual(cfg['conductor'], 'audit-loop-conductor')
+        self.assertEqual(cfg['judge']['agent'], 'audit-gate-judge')
+        self.assertEqual({s['worker'] for s in cfg['steps']}, {'audit-step-worker'})
+        self.assertIn('loop-out/', json.dumps(cfg))  # 成果物のパスは付け替えない
+        hooks = json.loads((self.root / '.claude/settings.json').read_text())['hooks']
+        cmds = [h['command'] for g in hooks['Stop'] for h in g['hooks']]
+        self.assertEqual(len(cmds), 2)
+        self.assertTrue(any('.claude/loop-audit/bin/stop-guard.py' in c for c in cmds))
+        self.assertEqual(json.loads((self.root / '.claude/loop-audit/.scaffold.json').read_text())['name'], 'audit')
+        # 道具は自分の置き場を見る
+        env = dict(os.environ, LOOP_NOW='1000')
+        env.pop('LOOP_DIR', None)
+        r = subprocess.run([sys.executable, str(self.root / '.claude/loop-audit/bin/loopctl.py'), 'begin'],
+                           capture_output=True, text=True, env=env, cwd=self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.root / '.claude/loop-audit/state.json').exists())
+        self.assertFalse((self.root / '.claude/loop/state.json').exists())
+
+    def test_名前は決まった文字だけ(self):
+        self.assertEqual(scaffold(self.root, '--profile', 'dev', '--name', 'A b').returncode, 2)
+
     def test_settingsを触らない指定(self):
         scaffold(self.root, '--profile', 'dev', '--no-settings')
         self.assertFalse((self.root / '.claude/settings.json').exists())
@@ -908,6 +944,21 @@ class UpdateTest(unittest.TestCase):
         (self.root / '.claude/loop/.scaffold.json').unlink()
         p = self.update()
         self.assertEqual(p.returncode, 2)
+
+    def test_名前を付けたループも更新できる(self):
+        root = Path(self._tmp.name) / 'named'
+        root.mkdir()
+        scaffold(root, '--profile', 'generic', '--name', 'x', '--no-settings')
+        w = root / '.claude/agents/x-step-worker.md'
+        w.write_text(w.read_text() + '手で足した行\n')
+        c = root / '.claude/loop-x/bin/loopctl.py'
+        c.write_text('# 古い\n')
+        self.assertEqual(scaffold(root, '--update').returncode, 2)  # 名前なしでは見つからず、名前を案内する
+        self.assertIn('--name', scaffold(root, '--update').stderr)
+        p = scaffold(root, '--update', '--name', 'x')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('手で直されているので触っていない: 2件', p.stdout)
+        self.assertIn('手で足した行', w.read_text())
 
     def test_新規に入れる時はprofileが要る(self):
         p = scaffold(self.root)

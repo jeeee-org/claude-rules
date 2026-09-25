@@ -133,6 +133,10 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 
 統括役は、`pipeline.json`の`must_stop`に挙がった操作の直前で必ず止まる。既定は共有ブランチへのpush・PRのマージ・デプロイと本番への反映・外へのメッセージの送信・データの削除。記録のpushが既定の手順のリポなどでは、ここから外す（取り消せない操作は、この一覧にかかわらず人に確かめる）。
 
+## 同じリポに2つ目のループを置く
+
+claude-rulesの`tools/loop-scaffold.py <リポ> --profile generic --name <名前>`で入れる。置き場は`.claude/loop-<名前>/`、エージェントは`<名前>-loop-conductor`などになり、中身の参照とフックの登録も付け替わる。起動は`claude --agent <名前>-loop-conductor`。更新するときは`--update --name <名前>`。
+
 ## ループ自身を改修しない
 
 実行を始めた時点で、ループ自身のファイル（`.claude/loop/bin/`・`gates/`・`pipeline.json`・`.claude/agents/`・`.claude/settings.json`）のハッシュを控え、ゲートのたびに突き合わせる。変わっていれば`loop-self`の検査で不合格。人が意図して直したなら`loopctl.py accept-self`で控え直す。
