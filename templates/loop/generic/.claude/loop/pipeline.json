@@ -10,7 +10,8 @@
     "default_threshold": 0.9,
     "target_accuracy": 0.95,
     "min_samples": 20,
-    "audit_rate": 0.1
+    "audit_rate": 0.1,
+    "promote_min_fires": 5
   },
   "steps": [
     {
@@ -21,7 +22,9 @@
       "gate": "gates/outputs.sh",
       "instructions": "（例）題材に要る材料を集め、出典付きで loop-out/collect.md にまとめる。ここを各リポの作業に書き換える",
       "review_focus": "材料の抜け・出典の確かさ・題材との関係",
-      "outputs": ["loop-out/collect.md"],
+      "outputs": [
+        "loop-out/collect.md"
+      ],
       "parallel": 3,
       "judge_questions": []
     },
@@ -33,9 +36,19 @@
       "gate": "gates/outputs.sh",
       "instructions": "（例）collect.md をもとに loop-out/draft.md を書く",
       "review_focus": "材料に無いことを書いていないか・読み手に通じるか",
-      "outputs": ["loop-out/draft.md"],
+      "outputs": [
+        "loop-out/draft.md"
+      ],
       "judge_questions": [
-        {"id": "draft-grounded", "question": "draft.md の主張はすべて collect.md の材料に裏付けがあるか", "answers": ["yes", "no"], "pass": "yes"}
+        {
+          "id": "draft-grounded",
+          "question": "draft.md の主張はすべて collect.md の材料に裏付けがあるか",
+          "answers": [
+            "yes",
+            "no"
+          ],
+          "pass": "yes"
+        }
       ]
     },
     {
@@ -45,7 +58,9 @@
       "reviewer": null,
       "gate": "gates/outputs.sh",
       "instructions": "（例）draft.md を体裁の決まりに合わせて loop-out/final.md にする",
-      "outputs": ["loop-out/final.md"],
+      "outputs": [
+        "loop-out/final.md"
+      ],
       "judge_questions": []
     }
   ]

@@ -414,6 +414,87 @@ class LoopRunTest(unittest.TestCase):
         self.ctl('finish')
         self.assertIsNone(self.sub('dev-implement', msg))
 
+    # --- 判断役から決定論への昇格 ---
+
+    def rules(self):
+        f = self.loop / 'judge/rules.json'
+        return json.loads(f.read_text())['rules'] if f.exists() else []
+
+    def judge_no(self, cand, conf=0.95):
+        ans = {'answers': [{'id': 'req-intent', 'answer': 'no', 'confidence': conf, 'reason': '節が無い', 'rule_candidate': cand}]}
+        return self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
+
+    def test_不合格の機械的な理由はルールの候補として影で走り始める(self):
+        self.to_judge()
+        self.judge_no({'kind': 'need_match', 'args': ['docs/loop/requirements.md', '^## スコープ外']})
+        rs = self.rules()
+        self.assertEqual(len(rs), 1)
+        self.assertEqual(rs[0]['status'], 'shadow')
+        row = json.loads((self.loop / 'judge/judgments.jsonl').read_text().splitlines()[0])
+        self.assertTrue(row['shadow'][rs[0]['id']])
+
+    def test_形の誤った候補とリポの外を指す候補は捨てる(self):
+        self.to_judge()
+        self.judge_no({'kind': 'need_file', 'args': ['../etc/passwd']})
+        self.assertEqual(self.rules(), [])
+        self.assertIn('候補を捨てた', self.state()['steps']['requirements']['notes'][-3]['text'])
+
+    def test_合格の答えに添えた候補は使わない(self):
+        self.to_judge()
+        ans = {'answers': [{'id': 'req-intent', 'answer': 'yes', 'confidence': 0.99,
+                            'rule_candidate': {'kind': 'need_file', 'args': ['x.md']}}]}
+        self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
+        self.assertEqual(self.rules(), [])
+
+    def seed_rule(self, rid, check, rows):
+        (self.loop / 'judge').mkdir(exist_ok=True)
+        (self.loop / 'judge/rules.json').write_text(json.dumps({'rules': [
+            {'id': rid, 'step': 'requirements', 'question': 'req-intent', 'check': check, 'status': 'shadow'}]}))
+        with open(self.loop / 'judge/judgments.jsonl', 'w') as fh:
+            for i, (fired, decision, human) in enumerate(rows):
+                fh.write(json.dumps({'id': f'j{i}', 'run': 'r', 'step': 'requirements', 'question': 'req-intent',
+                                     'pass_answer': 'yes', 'answer': 'no', 'decision': decision, 'human_answer': human,
+                                     'shadow': {rid: fired}}) + '\n')
+
+    def test_誤検出なしで正しい検出が揃えば昇格を提案し採用できる(self):
+        self.seed_rule('r-1', {'kind': 'need_file', 'args': ['docs/loop/requirements.md']},
+                       [(True, 'auto_fail', None)] * 4 + [(True, 'escalate', 'not:yes'), (False, 'auto_pass', None)])
+        out = self.ctl('rules').stdout
+        self.assertIn('正しい5', out)
+        self.assertIn('promote r-1', out)
+        self.ctl('promote', 'r-1')
+        self.assertEqual(self.rules()[0]['status'], 'promoted')
+
+    def test_誤検出があれば昇格を拒む(self):
+        self.seed_rule('r-2', {'kind': 'need_file', 'args': ['x.md']},
+                       [(True, 'auto_fail', None)] * 6 + [(True, 'escalate', 'yes')])
+        out = self.ctl('rules').stdout
+        self.assertIn('誤り1', out)
+        self.assertIn('retire r-2', out)
+        p = self.ctl('promote', 'r-2', ok=False)
+        self.assertIn('条件を満たしていません', p.stderr)
+        self.ctl('retire', 'r-2')
+        self.assertEqual(self.rules()[0]['status'], 'retired')
+
+    def test_人が後から訂正すると実績も変わる(self):
+        self.seed_rule('r-3', {'kind': 'need_file', 'args': ['x.md']}, [(True, 'auto_fail', None)] * 5)
+        self.ctl('override', 'j0', 'yes')
+        self.assertIn('誤り1', self.ctl('rules').stdout)
+
+    def test_採用したルールは決定論ゲートで効く(self):
+        self.seed_rule('r-4', {'kind': 'need_match', 'args': ['docs/loop/requirements.md', '^## スコープ外']}, [])
+        self.ctl('promote', 'r-4', '--force')
+        self.ctl('begin')
+        self.ctl('start', 'requirements'); self.ctl('submit', 'requirements'); self.ctl('review', 'requirements', 'pass')
+        self.write_requirements()
+        p = self.ctl('gate', 'requirements', ok=False)
+        self.assertIn('✖ r-4', p.stdout)
+        self.assertIn('r-4', self.state()['steps']['requirements']['notes'][-1]['text'])
+        (self.root / 'docs/loop/requirements.md').write_text('# 要件\n## REQ-01 x\n受け入れ条件: y\n## スコープ外\n- なし\n')
+        self.ctl('start', 'requirements'); self.ctl('submit', 'requirements'); self.ctl('review', 'requirements', 'pass')
+        self.ctl('gate', 'requirements')
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'judge')
+
 
 class ScopeGateTest(unittest.TestCase):
     """実装のゲートの範囲の検査（本物のgitリポで）。"""

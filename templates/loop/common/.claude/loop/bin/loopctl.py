@@ -22,6 +22,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rules as rl  # noqa: E402
+
 LOOP_DIR = Path(os.environ.get("LOOP_DIR") or Path(__file__).resolve().parent.parent)
 PIPELINE = LOOP_DIR / "pipeline.json"
 STATE = LOOP_DIR / "state.json"
@@ -29,6 +32,8 @@ JUDGE_DIR = LOOP_DIR / "judge"
 JUDGMENTS = JUDGE_DIR / "judgments.jsonl"
 CALIBRATION = JUDGE_DIR / "calibration.json"
 LESSONS = JUDGE_DIR / "lessons.md"
+RULES = JUDGE_DIR / "rules.json"
+REPO = LOOP_DIR.parent.parent
 LOCK = LOOP_DIR / ".state.lock"
 
 OPEN = ("pending", "in_progress", "review", "gate", "judge")
@@ -358,6 +363,14 @@ def cmd_gate(a):
     if st_step(st, a.step)["status"] != "gate":
         raise LoopError(f"{a.step} はゲート待ちではありません（いま {LABEL[st['steps'][a.step]['status']]}）")
     ok, out = run_gate(p, a.step)  # ゲートは長く走りうるのでロックの外で実行する
+    promoted = [r for r in load_rules() if r["status"] == "promoted" and r["step"] == a.step]
+    if promoted:
+        lines = ["判断役から昇格したルール:"]
+        for r in promoted:
+            passed, msg = rl.evaluate(r["check"], REPO)
+            lines.append(f"  {'✔' if passed else '✖'} {r['id']}（問い{r['question']}）: {msg}")
+            ok = ok and passed
+        out = out + "\n" + "\n".join(lines)
     with locked():
         st = state()
         s = st_step(st, a.step)
@@ -404,8 +417,19 @@ def cmd_judge(a):
         if s["status"] != "judge":
             raise LoopError(f"{a.step} は判断待ちではありません（いま {LABEL[s['status']]}）")
         results, rows = [], []
+        all_rules = load_rules()
+        new_rules = []
         for q in step_def(p, a.step)["judge_questions"]:
             ans = got.get(q["id"])
+            cand = (ans or {}).get("rule_candidate")
+            if cand and ans.get("answer") != q["pass"]:
+                err = rl.validate(cand)
+                rid = rl.rule_id(q["id"], cand) if not err else None
+                if err:
+                    note(s, f"判断役のルール候補を捨てた（{q['id']}）: {err}")
+                elif not any(r["id"] == rid for r in all_rules + new_rules):
+                    new_rules.append({"id": rid, "step": a.step, "question": q["id"], "check": cand,
+                                      "status": "shadow", "created": now(), "origin": st["run_id"]})
             jid = f"{st['run_id']}-{a.step}-{q['id']}-r{s.get('rework', 0)}"
             if ans is None or ans.get("answer") not in q["answers"]:
                 decision = "escalate"
@@ -423,7 +447,9 @@ def cmd_judge(a):
                         decision, reason = "escalate", "抜き取り確認（学習用）"
                 else:
                     decision, reason = "auto_fail", f"確信度{conf:.2f}≧{th:.2f}"
-            rows.append({"id": jid, "t": now(), "run": st["run_id"], "step": a.step, "question": q["id"],
+            shadow = {r["id"]: not rl.evaluate(r["check"], REPO)[0]
+                      for r in all_rules + new_rules if r["status"] == "shadow" and r["question"] == q["id"]}
+            rows.append({"id": jid, "t": now(), "run": st["run_id"], "step": a.step, "question": q["id"], "shadow": shadow,
                          "rework": s.get("rework", 0), "answer": answer, "pass_answer": q["pass"], "confidence": conf, "decision": decision,
                          "judge_reason": (ans or {}).get("reason", ""), "human_answer": None, "note": ""})
             results.append((q, answer, decision, reason, (ans or {}).get("reason", "")))
@@ -439,6 +465,9 @@ def cmd_judge(a):
             s["status"] = "done"
         note(s, "判断役: " + ", ".join(f"{q['id']}={d}" for q, _, d, _, _ in results))
         JUDGE_DIR.mkdir(parents=True, exist_ok=True)
+        if new_rules:
+            save_rules(all_rules + new_rules)
+            note(s, "判断役のルール候補を影で走らせ始めた: " + ", ".join(r["id"] for r in new_rules))
         with open(JUDGMENTS, "a", encoding="utf-8") as fh:
             for r in rows:
                 fh.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -562,6 +591,90 @@ def cmd_calibrate(a):
         print("（確認だけ。反映するなら --apply）")
 
 
+# ---------- 判断役から決定論への昇格 ----------
+
+def load_rules() -> list:
+    return (load_json(RULES, {}) or {}).get("rules", [])
+
+
+def save_rules(rs: list) -> None:
+    save_json(RULES, {"rules": rs})
+
+
+def truth_pass(r: dict):
+    """その判断の「正しい答えは合格だったか」。人の正解を優先し、無ければ自動で決まった結論。分からなければNone。"""
+    h = r.get("human_answer")
+    if h:
+        return (not h.startswith("not:")) and h == r.get("pass_answer", h)
+    return {"auto_pass": True, "auto_fail": False}.get(r.get("decision"))
+
+
+def rule_stats(rid: str) -> dict:
+    """影で走った実績。fired=不合格を検出した回数、fp=検出したのに正しい答えは合格だった回数（誤検出）。"""
+    st = {"fired": 0, "tp": 0, "fp": 0, "unknown": 0, "missed": 0, "seen": 0}
+    if not JUDGMENTS.exists():
+        return st
+    for l in JUDGMENTS.read_text(encoding="utf-8").splitlines():
+        if not l.strip():
+            continue
+        r = json.loads(l)
+        if rid not in r.get("shadow", {}):
+            continue
+        st["seen"] += 1
+        t = truth_pass(r)
+        if r["shadow"][rid]:
+            st["fired"] += 1
+            st["unknown" if t is None else "fp" if t else "tp"] += 1
+        elif t is False:
+            st["missed"] += 1
+    return st
+
+
+def cmd_rules(a):
+    p = pipeline()
+    need = p.get("judge", {}).get("promote_min_fires", 5)
+    rs = load_rules()
+    if not rs:
+        print("ルールの候補はまだありません（判断役が機械的な理由で不合格を出すと、候補が添えられます）")
+        return
+    for r in rs:
+        s = rule_stats(r["id"])
+        ready = r["status"] == "shadow" and s["tp"] >= need and s["fp"] == 0
+        mark = {"promoted": "採用中", "retired": "廃止", "shadow": "影で検証中"}[r["status"]]
+        print(f"{r['id']} [{mark}] 工程{r['step']}・問い{r['question']}: {rl.describe(r['check'])} で不合格を検出")
+        print(f"    実績: 検出{s['fired']}回（正しい{s['tp']}・誤り{s['fp']}・未確定{s['unknown']}）、見逃し{s['missed']}回")
+        if ready:
+            print(f"    → 昇格の条件を満たしました（正しい検出{need}回以上・誤りなし）。採用するなら `loopctl.py promote {r['id']}`")
+        elif r["status"] == "shadow" and s["fp"]:
+            print(f"    → 誤検出があります。廃止するなら `loopctl.py retire {r['id']}`")
+
+
+def set_rule_status(rid: str, status: str, force: bool = False) -> dict:
+    rs = load_rules()
+    for r in rs:
+        if r["id"] == rid:
+            if status == "promoted" and not force:
+                s = rule_stats(rid)
+                need = pipeline().get("judge", {}).get("promote_min_fires", 5)
+                if s["fp"] or s["tp"] < need:
+                    raise LoopError(f"{rid} は昇格の条件を満たしていません（正しい検出{s['tp']}/{need}回・誤り{s['fp']}回）。承知で採るなら --force")
+            r["status"] = status
+            r[f"{status}_at"] = now()
+            save_rules(rs)
+            return r
+    raise LoopError(f"ルール {rid} はありません（`loopctl.py rules`で一覧）")
+
+
+def cmd_promote(a):
+    r = set_rule_status(a.rule_id, "promoted", a.force)
+    print(f"{r['id']} を採用しました。以後、工程{r['step']}の決定論ゲートで「{rl.describe(r['check'])}」を確かめます")
+
+
+def cmd_retire(a):
+    r = set_rule_status(a.rule_id, "retired")
+    print(f"{r['id']} を廃止しました")
+
+
 # ---------- その他の遷移 ----------
 
 def cmd_block(a):
@@ -633,6 +746,9 @@ def main(argv=None):
     o = sub.add_parser("override", help="自動判断を後から訂正"); o.add_argument("judgment_id"); o.add_argument("answer"); o.add_argument("--note", default="")
     c = sub.add_parser("calibrate"); c.add_argument("--apply", action="store_true"); c.add_argument("--target", type=float)
     c.add_argument("--min-samples", type=int); c.add_argument("--lessons", type=int, default=20)
+    sub.add_parser("rules", help="判断役から出たルールの候補と実績")
+    pr = sub.add_parser("promote", help="ルールを決定論ゲートへ採用する（人が承認）"); pr.add_argument("rule_id"); pr.add_argument("--force", action="store_true")
+    rt = sub.add_parser("retire", help="ルールを廃止する"); rt.add_argument("rule_id")
     bl = sub.add_parser("block"); bl.add_argument("step"); bl.add_argument("reason")
     ub = sub.add_parser("unblock"); ub.add_argument("step"); ub.add_argument("--note", default="")
     ro = sub.add_parser("reopen"); ro.add_argument("step"); ro.add_argument("--note", default="")
@@ -644,7 +760,7 @@ def main(argv=None):
         {
             "begin": cmd_begin, "status": cmd_status, "next": cmd_next, "start": cmd_start, "submit": cmd_submit,
             "review": cmd_review, "gate": cmd_gate, "judge": cmd_judge, "decide": cmd_decide, "override": cmd_override,
-            "calibrate": cmd_calibrate, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
+            "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
             "resume": lambda a: set_active(True, "再開しました"),
             "finish": lambda a: set_active(False, "実行を閉じました", finished=True),

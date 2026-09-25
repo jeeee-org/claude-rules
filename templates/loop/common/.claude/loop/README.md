@@ -18,6 +18,8 @@
 | `.claude/loop/bin/subagent-report-guard.py` | SubagentStopフック。工程役が決まった形の報告なしに終わるのを1回差し戻す |
 | `.claude/loop/judge/judgments.jsonl` | 判断役の全判定と人の正解（**git管理する**。学習の材料） |
 | `.claude/loop/judge/calibration.json`・`lessons.md` | 較正で決まった閾値と、判断役に見せる誤りの例 |
+| `.claude/loop/judge/rules.json` | 判断役から出たルールの候補と採否（影で検証中・採用中・廃止） |
+| `.claude/loop/bin/rules.py` | ルールの検査4種（loopctlから使う） |
 | `.claude/loop/state.json` | 実行中の状態（git管理外） |
 
 ## 導入したら最初にやること
@@ -66,6 +68,21 @@ python3 .claude/loop/bin/loopctl.py calibrate --apply  # 閾値と誤りの例�
 - 誤りの例は`lessons.md`に書かれ、判断役が毎回読む。モデルの重みは学習しない（手元でできる範囲の強化）。
 - 閾値は判断役のモデルごとに決まる。`gate-judge.md`の`model`を替えたら`calibration.json`を消して取り直す。
 
+## 判断役の結論を決定論へ昇格させる
+
+判断役は、機械的な理由（節が無い・idが抜けている等）で不合格を出す時に、同じことを確かめる検査を「ルールの候補」として添える。候補はすぐには使わず、以後の判断で**影で**走らせて、判断役・人の結論と合うかを記録する（合否には使わない）。
+
+```bash
+python3 .claude/loop/bin/loopctl.py rules              # 候補と実績（検出回数・正しい/誤り・見逃し）
+python3 .claude/loop/bin/loopctl.py promote <ルールid>  # 採用（人が承認）。以後その工程の決定論ゲートで効く
+python3 .claude/loop/bin/loopctl.py retire <ルールid>   # 廃止
+```
+
+- ルールは「検査に落ちたら不合格」の検出器だけ。検査はファイルの有無・パターンの有無・禁止パターン・idの網羅の4種の組み合わせだけ（判断役に自由なコードを書かせない）。
+- 昇格の条件は、正しい検出が`judge.promote_min_fires`（既定5）回以上で、誤検出が0回。条件を満たさないルールの`promote`は拒む（承知の上なら`--force`）。
+- 実績は`judgments.jsonl`から毎回数え直す。後から`override`で正解を直すと、実績も変わる。
+- 候補と採否は`judge/rules.json`（git管理する）。
+
 ## 上限値（pipeline.json）
 
 | キー | 既定 | 意味 |
@@ -74,3 +91,4 @@ python3 .claude/loop/bin/loopctl.py calibrate --apply  # 閾値と誤りの例�
 | `max_rework` | 3 | 1工程の差し戻しの上限。超えたら工程を止めて人へ |
 | `time_budget_sec` | null | 経過時間の予算。入れると催促に`elapsed Xs / Ys`を添える（公式: 時間の目安があると早く終わる。拘束力は無い） |
 | `judge.default_threshold` | 0.9 | 較正前に使う閾値 |
+| `judge.promote_min_fires` | 5 | ルールの候補を昇格させるのに要る、正しい検出の回数（誤検出は0回が条件） |
