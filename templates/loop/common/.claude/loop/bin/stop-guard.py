@@ -40,7 +40,7 @@ def main() -> int:
     if data.get("background_tasks"):
         return 0
 
-    items = lc.open_items(st)
+    items = lc.open_items(st, p)
     if not items:
         return 0  # 全部終わった、または残りは人待ち（止まってよい止まり方）
 

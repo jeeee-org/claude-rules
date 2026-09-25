@@ -8,6 +8,7 @@
 最後のメッセージに、行頭が `STATUS: done|blocked|partial` の行が無ければ差し戻す。
 判断役（gate-judge）は `"answers"` を含むJSONを返していれば通す。
 差し戻しは1回だけ（stop_hook_active が立っていれば通す）。無限の押し問答にしない。
+効くのはループの実行中（一時停止中を含む）だけ。実行が無い・`finish`で閉じた後は何もしない。
 """
 import json
 import re
@@ -34,6 +35,10 @@ def main() -> int:
         data = json.load(sys.stdin)
         p = lc.pipeline()
     except Exception:
+        return 0
+    # ループの実行中（一時停止中を含む）だけ。実行が無い・閉じた後は、同じ名前の工程役にも口を出さない
+    st = lc.load_json(lc.STATE)
+    if not st or st.get("finished"):
         return 0
     agent = data.get("agent_type") or ""
     if agent not in loop_agents(p) or data.get("stop_hook_active"):

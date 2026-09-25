@@ -307,6 +307,7 @@ class LoopRunTest(unittest.TestCase):
                                                       'last_assistant_message': msg, 'stop_hook_active': active})
 
     def test_報告の形が無い工程役は一度だけ差し戻す(self):
+        self.ctl('begin')
         self.assertEqual(self.sub('dev-implement', '実装しました。次はテストを書きます。')['decision'], 'block')
         self.assertIsNone(self.sub('dev-implement', '実装しました。', active=True))
         self.assertIsNone(self.sub('dev-implement', 'やったこと\nSTATUS: done\n成果物: src/a.ts'))
@@ -315,8 +316,103 @@ class LoopRunTest(unittest.TestCase):
         self.assertIsNone(self.sub('Explore', '調べました'))
 
     def test_判断役はJSONで返せば通す(self):
+        self.ctl('begin')
         self.assertIsNone(self.sub('gate-judge', '{"answers": []}'))
         self.assertEqual(self.sub('gate-judge', 'yesだと思います')['decision'], 'block')
+
+    # --- 別PCからの改善案（2026-09-25）の再現 ---
+
+    def set_pipeline(self, fn):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        fn(cfg)
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+
+    def test_止まった工程の後ろの工程は催促しない(self):
+        self.ctl('begin')
+        self.ctl('block', 'requirements', '顧客の回答待ち')
+        self.assertIsNone(self.stop())
+        out = self.ctl('status').stdout
+        self.assertIn('前提のrequirementsが止まっているため待ち', out)
+
+    def test_止まった工程と切り離した工程は催促する(self):
+        self.set_pipeline(lambda c: c['steps'][3].__setitem__('after', []))
+        self.ctl('begin')
+        self.ctl('block', 'requirements', '顧客の回答待ち')
+        out = self.stop()
+        self.assertEqual(out['decision'], 'block')
+        self.assertIn('test', out['reason'])
+        self.assertNotIn('design', out['reason'])
+
+    def test_ゲートの差し戻し理由に不合格の項目が残る(self):
+        self.ctl('begin')
+        self.ctl('start', 'requirements')
+        self.ctl('submit', 'requirements')
+        self.ctl('review', 'requirements', 'pass')
+        self.ctl('gate', 'requirements', ok=False)
+        notes = self.state()['steps']['requirements']['notes']
+        self.assertIn('requirements.md が無いか空', notes[-1]['text'])
+        self.assertNotIn('✖の項目を直してください', notes[-1]['text'])
+
+    def run_test_gate(self, report):
+        (self.loop / 'gates/commands.env').write_text('TEST_CMD="true"\n')
+        self.write_requirements()
+        if report is not None:
+            (self.root / 'docs/loop/test-report.md').write_text(report)
+        env = dict(self.env, LOOP_STEP='test', REPO_ROOT=str(self.root))
+        return subprocess.run(['bash', str(self.loop / 'gates/test.sh')], capture_output=True, text=True, env=env)
+
+    def test_テスト報告の失敗0件は通る(self):
+        p = self.run_test_gate('# テスト報告\n失敗 0件\n\n| 要件 | テスト | 結果 |\n|---|---|---|\n| REQ-01 | test_login | 合格 |\n')
+        self.assertEqual(p.returncode, 0, p.stdout)
+
+    def test_テスト報告の結果が不合格なら落ちる(self):
+        p = self.run_test_gate('| 要件 | テスト | 結果 |\n|---|---|---|\n| REQ-01 | test_login | 不合格 |\n')
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('REQ-01', p.stdout)
+
+    def test_テスト報告に表が無ければ落ちる(self):
+        p = self.run_test_gate('REQ-01 は確かめました。合格です。\n')
+        self.assertEqual(p.returncode, 1)
+
+    def test_止まった工程や提出済みの工程には着手できない(self):
+        self.ctl('begin')
+        self.ctl('start', 'requirements')
+        self.ctl('submit', 'requirements')
+        p = self.ctl('start', 'requirements', ok=False)
+        self.assertIn('reopen', p.stderr)
+        self.ctl('block', 'requirements', 'x')
+        p = self.ctl('start', 'requirements', ok=False)
+        self.assertIn('unblock', p.stderr)
+
+    def test_再開すると止めた理由が消え状態表にも出る(self):
+        self.ctl('begin')
+        for _ in range(4):
+            self.stop()
+        self.assertIn('止めました', self.ctl('status').stdout)
+        self.ctl('resume')
+        self.assertNotIn('halted', self.state())
+
+    def test_人の判断は前方一致する別工程の記録に付かない(self):
+        self.to_judge()
+        run = self.state()['run_id']
+        other = {'id': f'{run}-requirements-x-q-r0', 'run': run, 'step': 'requirements-x', 'question': 'q',
+                 'answer': 'yes', 'confidence': 0.5, 'decision': 'escalate', 'human_answer': None}
+        with open(self.loop / 'judge/judgments.jsonl', 'a') as fh:
+            fh.write(json.dumps(other) + '\n')
+        self.ctl('judge', 'requirements', '--answers', json.dumps({'answers': [{'id': 'req-intent', 'answer': 'yes', 'confidence': 0.5}]}))
+        self.ctl('decide', 'requirements', 'pass')
+        rows = [json.loads(l) for l in (self.loop / 'judge/judgments.jsonl').read_text().splitlines()]
+        self.assertIsNone([r for r in rows if r['step'] == 'requirements-x'][0]['human_answer'])
+        self.assertEqual([r for r in rows if r['step'] == 'requirements'][0]['human_answer'], 'yes')
+
+    def test_報告の形はループの実行中だけ求める(self):
+        msg = '実装しました。'
+        self.assertIsNone(self.sub('dev-implement', msg))
+        self.ctl('begin')
+        self.ctl('pause')
+        self.assertEqual(self.sub('dev-implement', msg)['decision'], 'block')
+        self.ctl('finish')
+        self.assertIsNone(self.sub('dev-implement', msg))
 
 
 if __name__ == '__main__':

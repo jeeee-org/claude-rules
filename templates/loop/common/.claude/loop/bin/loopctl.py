@@ -125,10 +125,29 @@ def note(stp: dict, text: str) -> None:
 
 # ---------- 集計（Stopフックからも使う） ----------
 
-def open_items(st: dict) -> list[str]:
-    """まだ手を動かせる未完了項目。止まっている工程（人待ち）は含めない。"""
+def waiting_on_blocked(st: dict, p: dict | None, sid: str, seen=None) -> str | None:
+    """この工程の前提（間接も含む）に止まっている工程があれば、その工程id。"""
+    if p is None:
+        return None
+    seen = seen or set()
+    for d in after_of(p, sid):
+        if d in seen or d not in st["steps"]:
+            continue
+        seen.add(d)
+        if st["steps"][d]["status"] == "blocked":
+            return d
+        hit = waiting_on_blocked(st, p, d, seen)
+        if hit:
+            return hit
+    return None
+
+
+def open_items(st: dict, p: dict | None = None) -> list[str]:
+    """まだ手を動かせる未完了項目。止まっている工程（人待ち）と、その後ろで待つだけの工程は含めない。"""
     items = []
     for sid, s in st["steps"].items():
+        if s["status"] == "pending" and waiting_on_blocked(st, p, sid):
+            continue
         if s["status"] in OPEN:
             shards = [k for k, v in s.get("shards", {}).items() if v != "submitted"]
             extra = f"（担当中: {', '.join(shards)}）" if shards and s["status"] == "in_progress" else ""
@@ -146,7 +165,9 @@ def fingerprint(st: dict) -> str:
 
 
 def render(st: dict, p: dict) -> str:
-    lines = [f"実行 {st['run_id']}  状態: {'進行中' if st['active'] else '停止中'}"]
+    lines = [f"実行 {st['run_id']}  状態: {'完了（閉じた）' if st.get('finished') else '進行中' if st['active'] else '一時停止中'}"]
+    if st.get("halted"):
+        lines.append(f"※ {st['halted']}（`resume`で再開）")
     el = int(now() - st["started_at"])
     budget = p.get("time_budget_sec")
     lines.append(f"経過 {el}s" + (f" / 予算 {budget}s" if budget else ""))
@@ -162,6 +183,10 @@ def render(st: dict, p: dict) -> str:
             line += "  分担: " + ", ".join(f"{k}={'提出済' if v == 'submitted' else '作業中'}" for k, v in s["shards"].items())
         if s["status"] == "blocked":
             line += f"  理由: {s.get('blocker')}"
+        elif s["status"] == "pending":
+            b = waiting_on_blocked(st, p, sd["id"])
+            if b:
+                line += f"  前提の{b}が止まっているため待ち"
         lines.append(line)
     return "\n".join(lines)
 
@@ -177,6 +202,7 @@ def cmd_begin(a):
         st = {
             "run_id": time.strftime("%Y%m%d-%H%M%S", time.localtime(now())),
             "active": True,
+            "finished": False,
             "started_at": now(),
             "goal": a.goal or "",
             "steps": {s["id"]: {"status": "pending", "shards": {}, "rework": 0, "notes": [], "blocker": None}
@@ -190,7 +216,7 @@ def cmd_begin(a):
 def cmd_status(a):
     st, p = state(), pipeline()
     if a.json:
-        print(json.dumps({"state": st, "open": open_items(st), "blocked": blocked_items(st)}, ensure_ascii=False, indent=2))
+        print(json.dumps({"state": st, "open": open_items(st, p), "blocked": blocked_items(st)}, ensure_ascii=False, indent=2))
     else:
         print(render(st, p))
 
@@ -219,6 +245,10 @@ def cmd_start(a):
                 raise LoopError(f"{a.step} はまだ始められません。先に {d} が完了している必要があります（いま {LABEL[st['steps'][d]['status']]}）")
         if s["status"] == "done":
             raise LoopError(f"{a.step} は完了済みです。やり直すなら `reopen {a.step}`")
+        if s["status"] == "blocked":
+            raise LoopError(f"{a.step} は止まっています（{s.get('blocker')}）。解けたら `unblock {a.step}`")
+        if s["status"] in ("review", "gate", "judge"):
+            raise LoopError(f"{a.step} は提出済みです（いま {LABEL[s['status']]}）。やり直すなら `reopen {a.step}`")
         s["status"] = "in_progress"
         s["shards"][a.shard] = "working"
         note(s, f"着手 shard={a.shard}")
@@ -287,6 +317,15 @@ def run_gate(p: dict, sid: str) -> tuple[bool, str]:
     return r.returncode == 0, out[-4000:]
 
 
+def gate_reason(out: str) -> str:
+    """差し戻しの理由。✖の付いた行（何が足りないか）を集める。無ければ最後の行。"""
+    ng = [l.strip() for l in out.splitlines() if l.strip().startswith("✖")]
+    if ng:
+        return " / ".join(ng)[:1500]
+    lines = [l for l in out.splitlines() if l.strip()]
+    return lines[-1] if lines else "（出力なし）"
+
+
 def cmd_gate(a):
     p = pipeline()
     st = state()
@@ -300,7 +339,7 @@ def cmd_gate(a):
             s["status"] = "judge" if step_def(p, a.step).get("judge_questions") else "done"
             note(s, "決定論ゲート通過")
         else:
-            back_to_work(s, p, "決定論ゲート不合格: " + out.splitlines()[-1] if out else "決定論ゲート不合格")
+            back_to_work(s, p, "決定論ゲート不合格: " + gate_reason(out))
         save_json(STATE, st)
     print(out)
     print(f"--- ゲート{'通過' if ok else '不合格'} → {a.step}: {LABEL[s['status']]}")
@@ -359,7 +398,7 @@ def cmd_judge(a):
                 else:
                     decision, reason = "auto_fail", f"確信度{conf:.2f}≧{th:.2f}"
             rows.append({"id": jid, "t": now(), "run": st["run_id"], "step": a.step, "question": q["id"],
-                         "answer": answer, "pass_answer": q["pass"], "confidence": conf, "decision": decision,
+                         "rework": s.get("rework", 0), "answer": answer, "pass_answer": q["pass"], "confidence": conf, "decision": decision,
                          "judge_reason": (ans or {}).get("reason", ""), "human_answer": None, "note": ""})
             results.append((q, answer, decision, reason, (ans or {}).get("reason", "")))
         if any(r[2] == "auto_fail" for r in results):
@@ -404,10 +443,11 @@ def cmd_decide(a):
         if not s.get("needs_human"):
             raise LoopError(f"{a.step} は人の判断待ちではありません")
         q_pass = {q["id"]: q["pass"] for q in step_def(p, a.step)["judge_questions"]}
-        rid = f"{st['run_id']}-{a.step}-"
+        rw = s.get("rework", 0)
 
         def label(r):
-            if r["id"].startswith(rid) and r["id"].endswith(f"-r{s.get('rework', 0)}") and r["human_answer"] is None:
+            if (r.get("run") == st["run_id"] and r.get("step") == a.step and r.get("human_answer") is None
+                    and r.get("rework", rw) == rw):
                 if a.verdict == "pass":
                     r["human_answer"] = q_pass[r["question"]]
                 elif a.fail_questions and r["question"] not in a.fail_questions:
@@ -535,10 +575,12 @@ def cmd_reopen(a):
     print(f"{a.step} をやり直しにしました")
 
 
-def set_active(flag: bool, msg: str):
+def set_active(flag: bool, msg: str, finished: bool = False):
     with locked():
         st = state()
         st["active"] = flag
+        st["finished"] = finished
+        st.pop("halted", None)
         st["stop_guard"] = {"count": 0, "fingerprint": ""}
         save_json(STATE, st)
     print(msg)
@@ -579,7 +621,7 @@ def main(argv=None):
             "calibrate": cmd_calibrate, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
             "resume": lambda a: set_active(True, "再開しました"),
-            "finish": lambda a: set_active(False, "実行を閉じました"),
+            "finish": lambda a: set_active(False, "実行を閉じました", finished=True),
         }[a.cmd](a)
     except LoopError as e:
         print(f"loopctl: {e}", file=sys.stderr)

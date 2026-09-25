@@ -1,5 +1,6 @@
 # 決定論ゲートの共通部品。各ゲートの先頭で `. "$LOOP_DIR/gates/lib.sh"` する。
-# ゲートの約束: 終了コード0＝合格、それ以外＝不合格。最後の1行が差し戻しの理由として工程役へ渡る。
+# ゲートの約束: 終了コード0＝合格、それ以外＝不合格。✖の付いた行（ng が出す）が差し戻しの理由として
+# 状態に記録され、工程役へ渡る。✖が1つも無い不合格では最後の行が理由になる。
 # 判断の要ることは書かない（それは pipeline.json の judge_questions へ）。
 set -u
 cd "${REPO_ROOT:?}"
@@ -21,6 +22,37 @@ need_all_ids() {
   local src="$1" dst="$2" re="$3" missing
   missing=$(grep -Eo -- "$re" "$src" 2>/dev/null | sort -u | while read -r id; do grep -Fq -- "$id" "$dst" 2>/dev/null || echo "$id"; done | tr '\n' ' ')
   if [ -z "$missing" ]; then ok "$src のidが $dst にすべてある"; else ng "$dst に無いid: $missing"; fi
+}
+
+# 表の結果列で判定する。元ファイルに出るid（例 REQ-01）ごとに、先ファイルの表（| で始まる行）に
+# そのidを含む行が1つ以上あり、その行の結果列（既定は最後の列）がすべて「合格」であること。
+# 語の有無で判定しない（「失敗 0件」のような健全な報告を落とさないため）。
+need_table_pass() {
+  local src="$1" dst="$2" re="$3" col="${4:-last}" out
+  out=$(python3 - "$src" "$dst" "$re" "$col" <<'PY'
+import re, sys
+src, dst, rx, col = sys.argv[1:5]
+try:
+    ids = sorted(set(re.findall(rx, open(src, encoding="utf-8").read())))
+    rows = [l for l in open(dst, encoding="utf-8").read().splitlines() if l.lstrip().startswith("|")]
+except OSError as e:
+    print(f"NG 読めない: {e}"); sys.exit()
+if not rows:
+    print(f"NG {dst} に表が無い（| で始まる行が無い）"); sys.exit()
+for i in ids:
+    hit = [r for r in rows if i in r]
+    if not hit:
+        print(f"NG {i} の行が表に無い"); continue
+    for r in hit:
+        cells = [c.strip() for c in r.strip().strip("|").split("|")]
+        v = cells[-1] if col == "last" else cells[int(col)]
+        if v != "合格":
+            print(f"NG {i} の結果が「{v}」（合格でない）")
+if not ids:
+    print(f"NG {src} にidが無い")
+PY
+)
+  if [ -z "$out" ]; then ok "$dst の表で、$src の全idの結果が合格"; else while IFS= read -r l; do ng "${l#NG }"; done <<<"$out"; fi
 }
 
 # コマンドを回して終了コードで判定する。コマンドが未設定なら不合格（黙って通さない）

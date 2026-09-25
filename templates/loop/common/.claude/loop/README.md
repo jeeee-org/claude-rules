@@ -47,7 +47,8 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 
 - 工程が「止まっている」: `loopctl.py status`で理由を見て、判断待ちなら`loopctl.py decide <工程> pass|fail --note "<理由>"`、外部待ちが解けたら`loopctl.py unblock <工程>`
 - 自動で通った判断が誤っていた: `loopctl.py override <判断id> <正しい答え> --note "<理由>"`（判断idは`judge/judgments.jsonl`）
-- 人が付き添って対話で回す時: `loopctl.py pause`（Stopフックの催促が止まる）
+- 人が付き添って対話で回す時: `loopctl.py pause`（Stopフックの催促が止まる。工程役の報告の形は引き続き確かめる）
+- 実行を閉じる: `loopctl.py finish`（以後は工程役の報告の形も確かめない）
 
 ## 判断役を育てる（較正）
 
