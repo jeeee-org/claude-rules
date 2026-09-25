@@ -15,16 +15,21 @@
 # **$CLAUDE_CONFIG_DIR/settings.json を書き換えます**（記録の関門フック2件を hooks へ登録。
 # 控えを settings.json.bak に取ります）。登録を止めるなら:
 #   ./install.sh --no-hook-register   （または CLAUDE_RULES_REGISTER_HOOKS=0 ./install.sh）
+# あわせて表示の設定（settings/display.json。to-doチェックリスト・思考の要約・focus表示）を
+# **無いキーだけ**足します（PCごとに決めた値は上書きしない）。止めるなら:
+#   ./install.sh --no-display-settings （または CLAUDE_RULES_DISPLAY_SETTINGS=0 ./install.sh）
 set -euo pipefail
 
 INSTALL_CODEX="${CLAUDE_RULES_INSTALL_CODEX:-1}"
 REGISTER_HOOKS="${CLAUDE_RULES_REGISTER_HOOKS:-1}"
+DISPLAY_SETTINGS="${CLAUDE_RULES_DISPLAY_SETTINGS:-1}"
 for arg in "$@"; do
   case "$arg" in
     --no-codex) INSTALL_CODEX=0 ;;
     --no-hook-register) REGISTER_HOOKS=0 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
-    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register）" >&2; exit 2 ;;
+    --no-display-settings) DISPLAY_SETTINGS=0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings）" >&2; exit 2 ;;
   esac
 done
 case "$INSTALL_CODEX" in
@@ -34,6 +39,10 @@ esac
 case "$REGISTER_HOOKS" in
   0|false|no|'') REGISTER_HOOKS=0 ;;
   *) REGISTER_HOOKS=1 ;;
+esac
+case "$DISPLAY_SETTINGS" in
+  0|false|no|'') DISPLAY_SETTINGS=0 ;;
+  *) DISPLAY_SETTINGS=1 ;;
 esac
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -224,6 +233,41 @@ register_record_guard() {
   fi
 }
 register_record_guard
+
+# 表示の設定（正本 settings/display.json）。Opus 5.5以降は to-do ツールが既定で外れ、
+# 作業中の様子が見えにくい。**無いキーだけ足す**——PCごとに選び直した値（viewMode等）を
+# 再installで戻さないため。中身の説明はREADME「表示の設定」。
+apply_display_settings() {
+  if [ "$DISPLAY_SETTINGS" = 0 ]; then
+    echo "※ 表示の設定は省きました（--no-display-settings）。" >&2
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "※ jqが無いため、表示の設定を足せませんでした。settings/display.json を手で $SETTINGS へ写してください" >&2
+    return 0
+  fi
+  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    echo "⚠ $SETTINGS がJSONとして読めません。表示の設定を省きました。" >&2
+    return 0
+  fi
+  local merged added
+  merged=$(jq --slurpfile d "$SRC_DIR/settings/display.json" '
+    ($d[0]) as $d
+    | .env = ((.env // {}) as $e | $e + (($d.env // {}) | with_entries(select(.key as $k | $e | has($k) | not))))
+    | reduce ($d | del(.env) | to_entries[]) as $kv (.; if has($kv.key) then . else .[$kv.key] = $kv.value end)
+    | if .env == {} then del(.env) else . end' "$SETTINGS") || {
+    echo "⚠ 表示の設定を合成できませんでした（jqの失敗）。settings.jsonは変えていません。" >&2; return 0; }
+  added=$(jq -rn --argjson a "$(cat "$SETTINGS")" --argjson b "$merged" '
+    [($b.env // {} | keys[]) as $k | select(($a.env // {}) | has($k) | not) | "env.\($k)"]
+    + [($b | keys[]) as $k | select($k != "env" and ($a | has($k) | not)) | $k] | join(", ")') || added=""
+  if [ -n "$added" ]; then
+    cp "$SETTINGS" "$SETTINGS.bak"
+    printf '%s\n' "$merged" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+    echo "  - settings.jsonに表示の設定を足しました: $added（控え: $SETTINGS.bak。止めるなら --no-display-settings）"
+  fi
+}
+apply_display_settings
 
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/hooks"

@@ -45,6 +45,7 @@ quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同
 | `tools/check-moved-lines.py` | 文書を分けて移した後、元の文書の各行が移動先のどれかに残っているかを突き合わせる（`NOTES.md`の一回限りの記録をcheckpointへ移し、残す節だけ書き直した時など）。元は`--from HEAD:NOTES.md`のようにgitの版を直接読めるので、書き換え前の退避が要らない。段を下げて貼った見出しと、行頭の字下げの違いは同じとみなし、空行と区切り行は数えない。どこにも無い行を行番号付きで出す（exit 1）。**配置はせず**、`migrate-rules`スキルからcloneのパスで呼ぶ。テストは上と同じ |
 | `templates/loop/` | **正本**。ループ系エージェントのひな型。`common/`（統括役`loop-conductor`・判断役`gate-judge`・状態を動かす`loopctl.py`・早止まりを捕まえるStop / SubagentStopフック・決定論ゲートの共通部品・完了条件とゲート設計の雛形）に、`dev/`（要件→設計→実装→テストの工程役4体と各工程のレビュー役4体・工程ごとのゲート）か`generic/`（工程をpipeline.jsonで自分で決める汎用の工程役とレビュー役）を重ねて使う。**配置はしない**——対象リポへ入れるのは`tools/loop-scaffold.py`。Opus 5.5公式の早止まり対策（文章だけの番の終わりを完了とみなさない・残りを名指しして続けさせる・続行は数回まで・走っている作業の戻りを待つ・常駐指示の例文）をそのまま部品にしてある。入れた後の使い方は入れた先の`.claude/loop/README.md` |
 | `tools/loop-scaffold.py` | ループのひな型を対象リポへ入れる。`python3 <clone>/tools/loop-scaffold.py <対象リポ> --profile dev`（開発以外は`--profile generic`）。既にあるファイルは上書きせず（`--force`で上書き）、対象の`.claude/settings.json`へStop / SubagentStopフックを重複なく足す（控えは`.bak`、`--no-settings`で触らない）。何をどの版から入れたかを`.claude/loop/.scaffold.json`に残す。**微調整は入れた先で行い、ここへは戻さない**。`--dry-run`で確認だけ。**配置はせず**、cloneから呼ぶ。テストは`python3 -m unittest discover -s tools/tests` |
+| `settings/display.json` | **正本**。表示の設定（to-doチェックリスト・思考の要約・focus表示）。`install.sh`が`~/.claude/settings.json`へ**無いキーだけ**足す（PCごとに変えた値は戻さない。`--no-display-settings`で省く）。中身は下の「表示の設定」 |
 | `install.sh` | 上記を両環境へ配置。ブロックはマーカー間置換（無ければ末尾追記）。配置後に`tools/check-limits.sh`で上限を目安チェック。`--no-codex`でCodex側の配置を省ける。**clone以外（配布先へ取り込まれた複製）から走った時は、`rules/*.md`がpull専用である旨をstderrに出す** |
 
 `install.sh`は両方を既定で配置する。配置先は`CLAUDE_CONFIG_DIR` / `CODEX_HOME`で変更でき、再実行は冪等。
@@ -62,6 +63,29 @@ Codex 0.144.1の安定版hooksには、Claude Codeの`UserPromptSubmit`に相当
 分類子プロセスは`--ephemeral --ignore-user-config`で起動し、再帰とセッション保存を避ける。モデルは`CODEX_TRIAGE_MODEL`、タイムアウトは`CODEX_TRIAGE_TIMEOUT`で上書きできる。分類失敗時は通常のCodex起動へフォールバックする。
 
 独立モデルでの事前分類が不要なら、通常のCodex会話で「この依頼をトリアージしてから進めて」と自然言語で指定できる。この経路ではメインCodex自身が`$triage`で分類する。**2026-09-15以降、グローバル`AGENTS.md`はトリアージを必須発動しない**——ユーザーが言った時だけ動く。実行依頼がT1なら、Codex版`$quorum`がインストール済みの場合は提案だけで止めず、そのまま利用する。
+
+## 表示の設定（作業中の様子を見えるようにする）
+
+> 2026-09-25に入れた。**「何をやっているか分からない」「サブエージェントの様子が追えない」と感じたら、ここを見返す。**
+
+Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツールが既定で外れ、作業中のチェックリストが出なくなった。既定のままだと様子が見えにくいので、`install.sh`が次の3つを`~/.claude/settings.json`へ足す（正本は`settings/display.json`）。どれも`~/.claude/settings.json`に書くと、そのPCの全PJに効く。
+
+| 設定 | 何が変わるか |
+|---|---|
+| `env.CLAUDE_CODE_ENABLE_TODO_TOOLS: "1"` | Claudeが作業のチェックリストを作るようになり、`Ctrl+T`で開閉できる。**起動時に読まれるので、入れた後に始めたセッションから効く** |
+| `showThinkingSummaries: true` | `Ctrl+O`で、思考の中身が畳まれた印でなく要約で読める |
+| `viewMode: "focus"` | 最後の依頼・ツール呼び出しの1行要約・最終応答だけを出す。全部見たい時は`/focus`で切り替えるか、このPCだけ`"verbose"`（全ツールの中身）に書き換える。フルスクリーン表示が要る（`/tui`で確かめる） |
+
+**確かめ方**: `jq '{env, viewMode, showThinkingSummaries}' ~/.claude/settings.json`
+
+**設定なしで使える見方**（覚えておくもの）:
+- サブエージェント: 入力欄の下の欄に1体1行。`/tasks`でEnterを押すとその転記を開ける。**終わった分が`/tasks`に残るのは30秒だけ**。結果は後の番に「完了の通知」としてメインへ届く
+- `Ctrl+O`: 転記の詳細（各ツールの中身・モデル名・時刻）。`/goal`中は評価役の判定理由もここ
+- `/recap`: ここまでの要約。3分以上離れて戻ると自動でも出る
+- `/workflows`: ワークフローの工程ごとの進み具合
+- 一覧の行を書き換えたい時は`subagentStatusLine`（未設定）
+
+**他のPC**: `git pull && ./install.sh`で入る。**入れた後にClaude Codeを起動し直す**。
 
 ## ルールを変更するとき
 

@@ -53,6 +53,7 @@
 - 2026-09-20 ClaudeのAGENTS.md探索は、作業dirと**その祖先すべて**の`<dir>/AGENTS.md`と`<dir>/.claude/AGENTS.md`を両方読む（実測）。`~/.claude/AGENTS.md`も`$HOME`配下で作業する限り射程に入るが、`$HOME`の外（WSLの`/mnt/c`等）へ出ると黙って落ちる。
 - 2026-09-20 PJに`CLAUDE.md`があると既定でAGENTS.mdは**全部**読まれない（実測。部分的に残らない）。`~/.claude/CLAUDE.md`はこの抑止判定に数えられない。`claude-md-and-agents-md`にすると両方載るが、設定は`~/.claude/settings.json`・`--settings`・managedのみで**project/local settingsでは効かない**。グローバルCLAUDE.mdをやめて内容をPJへ降ろす案は、PJ側も`AGENTS.md`1本にしない限り成立しない。
 - 2026-09-20 Codexの`AGENTS.md`探索は**git rootで止まる**（openai/codex issue #15683）。共通の親ディレクトリに1枚置いて複数リポで共有する形は、Claudeでは成立するがCodexでは成立しない。層を揃える時はここが非対称。
+- 2026-09-25 `install.sh`は`set -e`なので、`x=$(jq …)`のjqが失敗すると**何も言わずにスクリプト全体が途中で終わる**（表示の設定を足す段で踏んだ。後続の配置も走らなかった）。設定を書き換える段は`|| { 警告; return 0; }`で受ける。jqの`with_entries(select($e | has(.key)))`は`.key`が`$e`に対して評価されてnullになる——`.key as $k | $e | has($k)`と書く。
 
 ## ループのひな型
 - 2026-09-25 Opus 5.5（とOpus 4.8以降・Sonnet 5以降）ではClaude Codeのto-doツール（TaskCreate等）が**既定で外れている**。チェックリスト（`Ctrl+T`）が空のままになる。戻すなら`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`。ループの作業表をto-doツールに頼らず`state.json`＋`loopctl.py`で持ったのはこのため。
