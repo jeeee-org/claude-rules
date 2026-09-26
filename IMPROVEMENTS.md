@@ -340,3 +340,9 @@
 - **気づき**: 共通ルールのブロック（`claude-rules:embed:begin`〜`end`）の中まで直した。マーカー行の「版 <commit>」が「版<commit>」になり、`embed-rules.py`が前回の選択を読めず「初回は--optionsを」と止まった。§9の悪い例「`install.sh` を実行」も良い例に書き換わった。そのPJでは同じ選択でブロックを作り直して元に戻した。
 - **改善案**: `fix-spacing.py`がembedマーカーの間を既定で守る（`--keep`の既定に入れる）。あわせて`migrate-rules`の手順7に「AGENTS.mdはブロックの外だけを対象にする」と一行足す。
 - **反映（2026-09-26）**: 提案どおり。`fix-spacing.py`は共通ルールのブロック（マーカー行を含む）を常に飛ばす（`--keep`の既定でなく、外す指定も持たない。生成物なので直すなら正本側）。`migrate-rules`の手順7に「`AGENTS.md`はブロックの外だけが対象」。加えて、壊れた後でも戻せるよう`embed-rules.py`がマーカー行の境目の空白が詰められていても版と選択を読むようにした（書き込み直すと元の形に戻る）。テスト2件追加。⇒ [反映済み → tools/fix-spacing.py・tools/embed-rules.py・skills/migrate-rules/SKILL.md]
+
+## 2026-09-26 — 境目の空白の補正が、名前で引かれている見出しと突き合わせを壊した
+- **状況**: 別PCで既存PJに`migrate-rules`を当てた。手順7で`fix-spacing.py`を当てた。
+- **気づき**: `NOTES.md`の見出しが詰められ、他のファイルが名前で引いている見出し（`NOTES.md「…」`の形で5つ）と`[[...]]`の行き先がずれた。さらに空白の補正のあとで`check-moved-lines.py`を回すと、補正した行がすべて「どこにも無い」と出て、突き合わせが使えなくなった。
+- **改善案**: ①`migrate-rules`の手順7で、突き合わせ（`check-moved-lines`）を空白の補正より先に行う順序にする。②`fix-spacing.py`は見出し行を「判断が要る候補」に回すか、`NOTES.md「…」`と`[[…]]`で引かれている見出しを守る。③`check-moved-lines.py`に、空白を無視して比べる指定（例`--ignore-space`）を足す。
+- **反映（2026-09-26）**: 3つとも。①`migrate-rules`の手順7を「先に突き合わせ、あとで空白を補正する」順に並べ替えた（後から回すなら`--ignore-space`）。②`fix-spacing.py`は見出しの行を直さず「判断が要る候補」に回し、`[[…]]`とファイル名の直後の`「…」`の中身を触らない（両方とった。見出しを守るだけだと、参照の側だけ直って逆向きにずれる）。直すなら見出しと参照を`grep`で一緒に揃えると手順に書いた。③`check-moved-lines.py --ignore-space`。あわせて手順7の上限の判定のパスを`.claude-rules/check-limits.sh`へ（グローバル廃止の追従漏れ）。テスト3件追加。⇒ [反映済み → skills/migrate-rules/SKILL.md・tools/fix-spacing.py・tools/check-moved-lines.py・README.md]

@@ -52,6 +52,20 @@ class FixSpacingTest(unittest.TestCase):
 
     # --- 触らない ---
 
+    def test_見出しは直さず判断が要る候補に回す(self):
+        proc, out = self.run_tool('## WSL2 DNS 断続障害\nWindows 側で動かす。\n', '--write')
+        self.assertIn('## WSL2 DNS 断続障害', out)
+        self.assertIn('Windows側で動かす。', out)
+        self.assertIn('判断が要る（見出し', proc.stdout)
+
+    def test_名前で引く参照の中身は触らない(self):
+        text = 'NOTES.md「dev SKIP 判定基準」と`NOTES.md`「WSL2 DNS 断続障害」を見る。[[WSL2 DNS 断続障害]] も Windows 側。\n'
+        out = self.fixed(text)
+        self.assertIn('NOTES.md「dev SKIP 判定基準」', out)
+        self.assertIn('`NOTES.md`「WSL2 DNS 断続障害」', out)
+        self.assertIn('[[WSL2 DNS 断続障害]]', out)
+        self.assertIn('Windows側', out)  # 参照の外は直す
+
     def test_共通ルールのブロックの中は触らない(self):
         text = ('<!-- claude-rules:embed:begin (版 ccc4ef9 / embed-both / 選択 autocommit。…) -->\n'
                 '- 悪い例「`install.sh` を実行」\n'

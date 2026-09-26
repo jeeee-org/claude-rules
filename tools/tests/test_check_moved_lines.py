@@ -85,6 +85,15 @@ class CheckMovedLinesTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertEqual(r.stdout.strip(), '2: - 旧ルーター')
 
+    def test_ignore_space_matches_lines_after_spacing_fix(self):
+        # 境目の空白を補正した後に突き合わせると、補正した行が「無い」と出る。--ignore-space で同じとみなす
+        src = self.write('old.md', '## WSL2 DNS 断続障害\n- Windows 側で VAD を回す。\n- 消えた行\n')
+        new = self.write('new.md', '## WSL2 DNS断続障害\n- Windows側でVADを回す。\n')
+        self.assertEqual(self.tool('--from', src, new).stdout.count(':'), 3)
+        r = self.tool('--from', src, '--ignore-space', new)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout.strip(), '3: - 消えた行')
+
     def test_indentation_changes_are_ignored(self):
         # 箇条書きの続きの行を、字下げを外して別の節へ移した形（voice-inputの移行で出た）
         src = self.write('old.md', '- [x] 決めた\n  理由の1行目\n    理由の2行目\n- 残す\n')

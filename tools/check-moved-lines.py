@@ -13,6 +13,8 @@
       --repo DIR          REV:PATHを読むリポ（既定はカレント）。**PATHはここからの相対**として
                           解決する（モノレポのタスクで走らせてもルート直下の同名ファイルと比べない）
       --strict-headings   見出しの「#」の数まで一致を求める（既定は、段を下げて貼った見出しを同じとみなす）
+      --ignore-space      行の中の空白を無視して比べる（境目の空白を補正した後に突き合わせる時。
+                          補正した行が「どこにも無い」と出るのを防ぐ。先に突き合わせるのが一番確か）
 
 比較は行頭と行末の空白を落とした完全一致（字下げを外して、または変えて移した行も同じとみなす）。
 空行と、区切りだけの行（--- や |---|---|）は数えない。
@@ -56,22 +58,22 @@ def read_source(spec, repo):
     raise Abort(f'{spec}が無い')
 
 
-def key(line, strict_headings):
+def key(line, strict_headings, ignore_space=False):
     # 箇条書きの続きの行は、移す先で字下げが変わることが多い（voice-inputの移行で3行が「無い」と出た）
     line = line.strip()
     if not strict_headings and HEADING_RE.match(line):
-        return 'H:' + HEADING_RE.sub('', line, count=1)
-    return line
+        line = 'H:' + HEADING_RE.sub('', line, count=1)
+    return re.sub(r'\s+', '', line) if ignore_space else line
 
 
 def counted(line):
     return line.strip() != '' and not SEPARATOR_RE.match(line)
 
 
-def missing_lines(source_text, target_texts, strict_headings=False):
-    haystack = {key(l, strict_headings) for t in target_texts for l in t.splitlines()}
+def missing_lines(source_text, target_texts, strict_headings=False, ignore_space=False):
+    haystack = {key(l, strict_headings, ignore_space) for t in target_texts for l in t.splitlines()}
     return [(n, l) for n, l in enumerate(source_text.splitlines(), 1)
-            if counted(l) and key(l, strict_headings) not in haystack]
+            if counted(l) and key(l, strict_headings, ignore_space) not in haystack]
 
 
 def main(argv=None):
@@ -79,6 +81,7 @@ def main(argv=None):
     ap.add_argument('--from', dest='source', required=True)
     ap.add_argument('--repo', default='.')
     ap.add_argument('--strict-headings', action='store_true')
+    ap.add_argument('--ignore-space', action='store_true')
     ap.add_argument('targets', nargs='+')
     a = ap.parse_args(argv)
     try:
@@ -94,7 +97,7 @@ def main(argv=None):
         return 2
     print(f'比較元: {source_shown}', file=sys.stderr)
     total = sum(1 for l in source.splitlines() if counted(l))
-    missing = missing_lines(source, texts, a.strict_headings)
+    missing = missing_lines(source, texts, a.strict_headings, a.ignore_space)
     for n, line in missing:
         print(f'{n:5d}: {line}')
     print(f'元の{total}行のうち、移動先のどこにも無い行{len(missing)}行', file=sys.stderr)

@@ -21,7 +21,12 @@
   - 記号を挟んだ両側（`4軸 + checkpoint`、`やること / バックログ`）。判定の字に記号を入れないため
   - 日本語同士の空白（`記録ルールは グローバル`）。§9は英数字と日本語の境目の話なので、手で見る
 
-**判断が要る候補**（出すだけで直さない）は2つ。
+**名前で引かれるもの**（見出しと、それを指す参照）は、片方だけ直すと行き先がずれる。
+  - **見出しの行は直さず「判断が要る候補」に回す**（他のファイルが`NOTES.md「…」`で引いていることがある）
+  - `[[…]]`の中身と、ファイル名の直後の`「…」`（`NOTES.md「…」`・`` `NOTES.md`「…」 ``）の中身は触らない
+  直すなら、見出しと参照を`grep`で一緒に探して、手で揃える。
+
+**判断が要る候補**（出すだけで直さない）は3つ。見出しの行（上）と、次の2つ。
   - 日本語のうしろに`(`で始まる英語の補足が続く形（`次の一手 (Top 3)`）
   - **コード印が4つ以上並ぶ行**。記法そのものを列挙している行（`` `#`見出し `- `箇条書き ``）で、
     ここの空白は項目の区切りなので詰めると読めなくなる
@@ -55,6 +60,11 @@ KEEP_SPACE = ''      # 残すと決めた空白の目印
 SPAN_SLOT = ''       # インラインコードの中身の目印
 
 
+# 名前で引く参照: [[…]] と、ファイル名の直後の「…」（NOTES.md「見出し」・`NOTES.md`「見出し」）
+REF = re.compile(r'\[\[[^\]]+\]\]|[A-Za-z0-9_.-]+\.md`?「[^」]*」')
+REF_SLOT = '\ue002'
+HEADING = re.compile(r'^\s*(?:>\s*)?#{1,6}\s')
+
 # 共通ルールのブロック（claude-rules/tools/embed-rules.pyが書き込む生成物）。中は触らない
 EMBED_BEGIN, EMBED_END = 'claude-rules:embed:begin', 'claude-rules:embed:end'
 
@@ -64,19 +74,28 @@ class Abort(Exception):
 
 
 def hide_spans(line):
-    """インラインコードの中身を目印に置き換える（印そのものは残す）"""
+    """インラインコードの中身を目印に置き換える（印そのものは残す）。名前で引く参照は丸ごと退避する"""
+    refs = []
+
+    def stash(m):
+        refs.append(m.group(0))
+        return REF_SLOT
+    line = REF.sub(stash, line)
     kept = []
 
     def swap(m):
         kept.append(m.group(2))
         return m.group(1) + SPAN_SLOT + m.group(1)
 
-    return CODE_SPAN.sub(swap, line), kept
+    return CODE_SPAN.sub(swap, line), (kept, refs)
 
 
-def show_spans(line, kept):
+def show_spans(line, saved):
+    kept, refs = saved
     out = iter(kept)
-    return CODE_SPAN.sub(lambda m: m.group(1) + next(out) + m.group(1), line)
+    line = CODE_SPAN.sub(lambda m: m.group(1) + next(out) + m.group(1), line)
+    back = iter(refs)
+    return re.sub(REF_SLOT, lambda _: next(back), line)
 
 
 def fix_line(line):
@@ -86,7 +105,7 @@ def fix_line(line):
     review = '日本語のうしろの「 (」' if JP_PAREN.search(body) else None
     body = LEAD_KEEP.sub(r'\1' + KEEP_SPACE, body)
     # 記法そのものを列挙している行では、コード印に接する空白は項目の区切りなので詰めない
-    enum = len(kept) >= ENUM_SPANS
+    enum = len(kept[0]) >= ENUM_SPANS
     held = []
 
     def join(m):
@@ -126,6 +145,11 @@ def scan(text, keeps):
             fixed.append(line)
             continue
         new, kind = fix_line(line)
+        if HEADING.match(line) and new != line:
+            # 見出しは他のファイルから名前で引かれていることがある。片方だけ直すと行き先がずれる
+            review.append((no, line, '見出し（名前で引かれていないか確かめてから、参照と一緒に直す）'))
+            fixed.append(line)
+            continue
         if kind:
             review.append((no, line, kind))
         if new != line:

@@ -131,6 +131,16 @@ python3 "$clone/tools/fix-spacing.py" --help
 
 ## 7. 仕上げ
 
+**順番：先に突き合わせ、あとで空白を補正する**（補正した行は、元の行と字面が変わって「どこにも無い」と出るため。後から回すなら`check-moved-lines.py --ignore-space`）。
+
+- **書き直した`REQUIREMENTS.md`・`PROGRESS.md`・`AGENTS.md`を突き合わせる**。書き直しで落ちた予定・未検証の項目・共通ルールを上書きしていた宣言が見つかる。
+  ```bash
+  python3 "$clone/tools/check-moved-lines.py" --from HEAD:REQUIREMENTS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
+  python3 "$clone/tools/check-moved-lines.py" --from HEAD:PROGRESS.md PROGRESS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
+  python3 "$clone/tools/check-moved-lines.py" --from HEAD:AGENTS.md AGENTS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
+  ```
+  - ここでも**冒頭の「比較元」**が、意図したファイルを指しているか見る（手順4と同じ）。
+  - `AGENTS.md`で出た行は、「共通ルールと同じ内容だから消した」と「共通ルールと違う値・強さ・例外だった」を1行ずつ分ける。後者は戻す（手順6）。
 - **半角スペースの検査**：新しく書いた文面（新規ファイルと、書き直した節）に、英数字と日本語の間の半角スペースが無いか確かめる。
   ```bash
   python3 "$clone/tools/fix-spacing.py" <file>...        # 検査だけ
@@ -139,16 +149,9 @@ python3 "$clone/tools/fix-spacing.py" --help
   - **`AGENTS.md`はブロックの外（PJ固有の部分）だけが対象**。共通ルールのブロック（`claude-rules:embed:begin`〜`end`）は道具が既定で飛ばす（生成物。手でも直さない）。
   - 行頭のマーカー・日付・章番号の直後、コードフェンスの中、インラインコードの中身は道具が守る。**その場の`sed`や`grep -P`で当てない**（記号を挟んだ両側と行頭の番号が潰れる。NOTES 2026-09-19）。
   - **「判断が要る候補」は直さずに出る**ので、1件ずつ見る。規則の悪い例を載せている行は`--keep RE`で守る。
+  - **見出しは直さずに候補として出る**（他のファイルが`NOTES.md「…」`や`[[…]]`で名前で引いていることがある）。直すなら`grep -rn '<見出しの語>'`で参照を探し、見出しと参照を一緒に揃える。`[[…]]`とファイル名の直後の`「…」`の中身は道具が触らない。
   - 過去のcheckpointは事実として据え置き、**どこまで遡って直すかはユーザーに聞く**（常時読む4ファイルまでが既定の線）。
-- **書き直した`REQUIREMENTS.md`・`PROGRESS.md`・`AGENTS.md`も突き合わせる**。書き直しで落ちた予定・未検証の項目・共通ルールを上書きしていた宣言が見つかる。
-  ```bash
-  python3 "$clone/tools/check-moved-lines.py" --from HEAD:REQUIREMENTS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
-  python3 "$clone/tools/check-moved-lines.py" --from HEAD:PROGRESS.md PROGRESS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
-  python3 "$clone/tools/check-moved-lines.py" --from HEAD:AGENTS.md AGENTS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
-  ```
-  - ここでも**冒頭の「比較元」**が、意図したファイルを指しているか見る（手順4と同じ）。
-  - `AGENTS.md`で出た行は、「共通ルールと同じ内容だから消した」と「共通ルールと違う値・強さ・例外だった」を1行ずつ分ける。後者は戻す（手順6）。
-- **上限**：`~/.claude/tools/check-limits.sh`。
+- **上限**：`.claude-rules/check-limits.sh`（PJに共通ルールを書き込んだ時に置かれる）。
 - **memory**：ユーザーが削除を選んだ場合だけ消す（リポの外なのでコミットは不要）。
 - **移行のcheckpoint**（`checkpoints/<今日>-記録ルールの移行-共通ルールの取り込み.md`）に書くこと：
   - ずれの表とユーザーの判断
