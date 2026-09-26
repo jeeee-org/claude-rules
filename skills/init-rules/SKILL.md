@@ -20,6 +20,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 - **PJの種類**：①コード/プロダクト開発 か ②調査・ドキュメント中心 か（REQUIREMENTSの役割が「機能仕様」か「調査スコープ」かに効く）。
 - **Git**：`main`直pushかfeatureブランチか／**pushを止めるか**（手順3で選ぶ個人の運用の「自動push」に対応。選ばないと「pushはユーザーの指示があった時だけ」）。
 - **コミット規約**：Conventional Commitsか、日本語要約1行か。
+- **最初の作業名**：最初のcheckpointの名前（`<YYYY-MM-DD>-<作業名>-初期構成.md`）に使う短い日本語。最初に取りかかる作業が決まっていればその語（`REQUIREMENTS.md`のカードの見出しと揃える）、無ければ「立ち上げ」。
 
 ### 2.5 Gitブートストラップ（リポジトリが無い時だけ）
 `git rev-parse`がリポジトリ外を示した場合のみ実施。既にリポジトリなら丸ごとスキップする。**リモート作成は外向き操作なので、実行前にリポジトリ名とprivateで良いかをユーザーに確認してから行う。**
@@ -124,8 +125,9 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 
 最終更新: <YYYY-MM-DD>
 
-## 現在のフェーズ
-（ここに）
+## 現在地
+> いまどこにいて、何が効いているかを1〜3行。**経緯を積まない**（上書きする。経緯はcheckpointへ）。
+立ち上げ直後。<次に何をするかを1行>
 
 ## 次の一手 (Top 3)
 > REQUIREMENTS.mdのバックログから直近の分だけを取り出す。
@@ -133,11 +135,13 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 2.
 3.
 
-## 完了
-- [x] <YYYY-MM-DD> 初期構成をinit-rulesで立ち上げ → [checkpoint](checkpoints/<YYYY-MM-DD>-初期構成.md)
-
 ## 進行中
+> REQUIREMENTS.mdの進行中の作業カードの見出しを指すだけにする（中身はカードに書く）。止まっていれば⚠️とブロッカーを1行。
 (なし)
+
+## 完了
+> 1行サマリ＋checkpointリンクだけ。古い分は消してよい。
+- [x] <YYYY-MM-DD> 初期構成をinit-rulesで立ち上げ → [checkpoint](checkpoints/<YYYY-MM-DD>-<作業名>-初期構成.md)
 
 ```
 
@@ -155,7 +159,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 ## （セクションは必要になったら足す）
 ```
 
-**`checkpoints/<YYYY-MM-DD>-初期構成.md`**（初回分）：
+**`checkpoints/<YYYY-MM-DD>-<作業名>-初期構成.md`**（初回分。作業名は手順2で確かめた語）：
 ```markdown
 # <YYYY-MM-DD> 初期構成の立ち上げ（init-rules）
 
