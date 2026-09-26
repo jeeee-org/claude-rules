@@ -58,6 +58,7 @@ description: claude-rulesの共通ルールをPJの`AGENTS.md`へ入れる・最
    `python3 "$clone/tools/embed-rules.py" <PJ> --target <先> --options <カンマ区切り|none|all> [--absorb-claude-md] --dry-run`
 2. 本実行する。
 3. **`--absorb-claude-md`が出した「機械で置き換えなかった行」を1行ずつ直す。** 「グローバル」「CLAUDE.md」がまだ残っている行で、共通ルールやこのファイルを指しているなら「共通ルール」「`AGENTS.md`」へ。別の意味（グローバルホットキー、環境変数をグローバルに置く、Claude Codeという製品の話）ならそのまま。**PJ固有の指示の中身は変えない**（言い回しの置き換えだけ）。
+   **`AGENTS.md`の外にも残っていないかを見る**：`git grep -n 'グローバル *§\|グローバル *`~/.claude\|グローバル既定' -- ':!checkpoints' ':!docs/checkpoints'`。PJのスクリプトのコメントやPJ固有のスキルに「グローバル§5」等が残っていることがある（道具は`AGENTS.md`しか直さない）。直すのは言い回しだけ。過去の記録（checkpoint等）は事実なので直さない。ループ等が実行中なら止まっている時に直す。
 4. 元から`AGENTS.md`に中身があった場合（Next.jsの注意書き、Codex向けのPJ指示など）は、移した`CLAUDE.md`の中身の後ろに残る。**同じことを2回言っていないか**を見て、重複していれば利用者に聞いてから片方にまとめる。
 5. 出た`※`の知らせを日本語で伝える（例：このPCに以前のグローバルの共通ルールが残っている → 4の`install.sh`で外れる）。
 6. `<PJ>/.claude-rules/check-limits.sh <PJ>`で上限を見る（共通ルールのブロックと、PJ固有の部分を分けて測る）。

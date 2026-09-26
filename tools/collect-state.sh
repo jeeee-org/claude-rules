@@ -68,7 +68,7 @@ echo "### hook-enabled  triage-classifier の settings.json 登録（件数の�
 n=$(grep -c 'triage-classifier' "$CC/settings.json" 2>/dev/null) || true
 echo "  ${n:-0}"
 
-echo "### pj-limits  カレントPJの常時ロードファイル（グローバル §2 の上限確認）"
+echo "### pj-limits  カレントPJの常時ロードファイル（共通ルール§2 の上限確認）"
 for f in CLAUDE.md AGENTS.md PROGRESS.md; do
   [ -f "$PWD/$f" ] && printf "  %-12s %6sB %4s行\n" "$f" "$(wc -c < "$f")" "$(wc -l < "$f")"
 done

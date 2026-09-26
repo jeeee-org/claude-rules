@@ -153,10 +153,10 @@ cp "$SRC_DIR/hooks/triage-classifier.sh" "$CLAUDE_CONFIG_DIR/hooks/triage-classi
 cp "$SRC_DIR/hooks/triage-rubric.txt" "$CLAUDE_CONFIG_DIR/hooks/triage-rubric.txt"
 chmod +x "$CLAUDE_CONFIG_DIR/hooks/triage-classifier.sh"
 
-# 記録の関門（commit時にグローバル§3の記録が入っているかを見る）。
+# 記録の関門（commit時に共通ルール§3の記録が入っているかを見る）。
 #   入口 = PreToolUse。実行前に止められるが、書き込みとcommitが同じ呼び出しだと判定できない
 #   後追い = PostToolUse。止められないが、gitの履歴を見るので見逃しが残らない
-# あわせてAI帰属行の関門（pushの直前にcommitメッセージを見る。グローバル§5.2 禁止②）も入れる。
+# あわせてAI帰属行の関門（pushの直前にcommitメッセージを見る。共通ルール§5.2 禁止②）も入れる。
 # トリアージ分類と違い**既定で有効**にするため、settings.json への登録までここで行う。
 # **ユーザーの設定ファイルを書き換えるので、事前に告げ、控えを取り、opt-outを用意する。**
 cp "$SRC_DIR/hooks/commit-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
@@ -274,7 +274,7 @@ if [ "$INSTALL_CODEX" = 1 ]; then
   chmod +x "$CODEX_HOME/hooks/codex-triage"
 fi
 
-# 上限判定スクリプト（グローバル §2 から参照される）
+# 上限判定スクリプト（PJへ書き込む共通ルール§2 から参照される。PJには .claude-rules/ へ複製される）
 mkdir -p "$CLAUDE_CONFIG_DIR/tools"
 cp "$SRC_DIR/tools/check-limits.sh" "$CLAUDE_CONFIG_DIR/tools/check-limits.sh"
 chmod +x "$CLAUDE_CONFIG_DIR/tools/check-limits.sh"
@@ -317,7 +317,7 @@ if [ "$INSTALL_CODEX" != 1 ]; then
   done
 fi
 
-# 数値上限の目安チェック（グローバル §2。超過しても失敗にはしない）
+# 数値上限の目安チェック（共通ルール§2。超過しても失敗にはしない）
 echo ""
 "$CLAUDE_CONFIG_DIR/tools/check-limits.sh" "$SRC_DIR" || true
 

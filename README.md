@@ -141,7 +141,7 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
    - **読み手と個人の運用はPJごとに利用者に聞く**。業務・共有リポは、チームの運用に合わない個人の運用（自動push等）を入れない選択もある。
    - **チームで使うリポでは、全員のClaude Codeがv2.1.277以降かを利用者に確認する**。古い人がいれば`--absorb-claude-md`を付けない（`CLAUDE.md`を残し、先頭の`@AGENTS.md`で繋ぐ）。
    - **worktree必須のリポは、そのPJの決まりどおりworktreeのブランチで書き込み、PRで入れる**（mainへ直接commitしない）。
-   - `--absorb-claude-md`が出した「機械で置き換えなかった行」を文脈を見て直す。
+   - `--absorb-claude-md`が出した「機械で置き換えなかった行」を文脈を見て直す。`AGENTS.md`の外（PJのスクリプトのコメント、PJ固有のスキル等）に残る「グローバル§N」も`git grep`で探して直す（過去の記録は直さない）。
    - commitはPJのGit運用に従う。記録の関門は、PJの作業ではない配布の変更なので理由を述べて`CR_SKIP_RECORD_GUARD=1`で通し、pushの関門にはトレーラ`記録なし: 共通ルールの配布の変更`を付ける。
 5. **最後に`./install.sh`**（`--no-codex`などの指定は前回と同じ）。`~/.claude/CLAUDE.md`・`~/.codex/AGENTS.md`から以前の共通ルールのブロックが外れ（控えは`.bak`）、Codexの`init-rules`が1枚のものに置き換わり、`install-rules`スキルが入る。**まだ書き込んでいないPJが残っているなら、外す前に利用者に確認する**（`--keep-global-rules`で残せる）。
 6. **確かめる**：
