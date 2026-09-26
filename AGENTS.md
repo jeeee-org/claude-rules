@@ -130,7 +130,7 @@ Claude Code / Codexへのプロジェクト指示書。**会話開始時に必�
 - Claude Code / Codexの**共通ルールと、それを入れる道具・スキルを配る**リポ。共通ルールは各PJの`AGENTS.md`の先頭へ`tools/embed-rules.py`で書き込む（2026-09-26にグローバルへの注入を廃止）。道具（スキル・フック・判定）は`install.sh`で各PCへ配る。
 - **最大のリスク＝正本の取り違え**。PJの`AGENTS.md`の**共通ルールのブロック内を直接編集しない**（次の書き込みで消える。このリポ自身の`AGENTS.md`も同じ）。編集するのは常にこのリポ側：
   - 共通ルール → `rules/common-rules.md`（唯一の正本。読み手で違う所は`{{語}}`、選べる個人の運用は`<!-- if:… -->`で書く。個人の運用の一覧は`tools/build-rules.py`の`OPTIONS`）
-  - スキル → `skills/<name>/SKILL.md`（`init-rules`はClaude版とCodex版の2枚のまま。**片方を変えたらもう片方も見る**）
+  - スキル → `skills/<name>/SKILL.md`（1スキル1枚。Claude・Codexの両方へ同じものを`install.sh`がコピーする。本文はどちらでも通じる書き方にする）
 - 共通ルールを変えたら、テストを通してcommitし、**このPCの全PJへ反映する**（`tools/embed-rules.py --scan ~/Develop`で「古い」を出して書き込み直し、PJごとにcommit）。手順はREADME「ルールを変更するとき」。
 - **自分自身に効くルールを書き換えるリポ**である点に注意。変更は反映した全PJの次セッション以降の挙動を変える。
 

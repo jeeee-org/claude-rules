@@ -140,7 +140,7 @@ if [ "$INSTALL_CODEX" = 1 ]; then
   rm -rf "$CODEX_HOME/skills/install-rules"
   cp -R "$SRC_DIR/skills/install-rules" "$CODEX_HOME/skills/install-rules"
   rm -rf "$CODEX_HOME/skills/init-rules"
-  cp -R "$SRC_DIR/skills/codex-init-rules" "$CODEX_HOME/skills/init-rules"
+  cp -R "$SRC_DIR/skills/init-rules" "$CODEX_HOME/skills/init-rules"   # Claudeと同じ1枚（2026-09-26に一本化）
   ln -sfn "$IMPROVEMENTS_FILE" "$CODEX_HOME/skills/init-rules/IMPROVEMENTS.md"
   verify_link "$CODEX_HOME/skills/init-rules/IMPROVEMENTS.md" "IMPROVEMENTS.md"
   rm -rf "$CODEX_HOME/skills/triage"

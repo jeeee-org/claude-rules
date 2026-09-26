@@ -17,7 +17,7 @@ OUT="$HOME/claude-rules-state.txt"
 # 正本として比較する対象（install.sh が配るものと対応）
 FILES="rules/common-rules.md tools/build-rules.py tools/embed-rules.py install.sh
 hooks/triage-classifier.sh hooks/codex-triage.sh hooks/triage-rubric.txt
-skills/init-rules/SKILL.md skills/codex-init-rules/SKILL.md
+skills/init-rules/SKILL.md
 skills/codex-triage/SKILL.md skills/codex-triage/agents/openai.yaml skills/install-rules/SKILL.md
 tools/collect-state.sh README.md AGENTS.md"
 

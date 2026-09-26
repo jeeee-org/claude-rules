@@ -7,6 +7,8 @@ description: 現在のプロジェクトに共通の進行管理構成（4軸 + 
 
 claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory不使用）をPJの`AGENTS.md`の先頭へ書き込み、その下にPJ固有の指示を置き、記録ファイルの雛形を作る。**既存ファイルは絶対に上書きしない**（無いものだけ作る）。共通ルールはグローバルに置かない（2026-09-26〜）。PJのルールファイルは`AGENTS.md`に統一し、`CLAUDE.md`は作らない。
 
+**Claude Code・Codexのどちらでも同じこのファイルを使う**（`install.sh`が両方へコピーする）。ユーザーへの確認は、選択肢の画面（Claude CodeのAskUserQuestion）が使えればそれで、無ければ番号付きの選択肢を出して答えを待つ。
+
 ## 手順
 
 ### 1. 現状確認
@@ -14,7 +16,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 - 既存の`AGENTS.md` / `CLAUDE.md` / `REQUIREMENTS.md` / `PROGRESS.md` / `NOTES.md` / `checkpoints/`の有無を確認。**既にあるものは触らない**。何が在って何を作るかをユーザーに伝える。`CLAUDE.md`が既にあるPJは、このスキルでなく`install-rules`で共通ルールを入れて`AGENTS.md`へ統一する（移す判断が要るため）。
 
 ### 2. PJの性質を確認（雛形の文言が変わる）
-ユーザーに簡潔に確認する（不明なら聞く、明らかなら推測して進めてよい）：
+ユーザーに簡潔に確認する（不明なら聞く、明らかなら推測して進めてよい。不明なまま残す項目は「（未定）」）：
 - **PJの種類**：①コード/プロダクト開発 か ②調査・ドキュメント中心 か（REQUIREMENTSの役割が「機能仕様」か「調査スコープ」かに効く）。
 - **Git**：`main`直pushかfeatureブランチか／**pushを止めるか**（手順3で選ぶ個人の運用の「自動push」に対応。選ばないと「pushはユーザーの指示があった時だけ」）。
 - **コミット規約**：Conventional Commitsか、日本語要約1行か。
@@ -33,7 +35,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 
 ### 3. 共通ルールを書き込み、雛形を生成（無いものだけ）
 
-**共通ルール** — `install-rules`スキルの「1つのPJ」の手順で、読み手（既定は両方）と個人の運用を選んでもらい、`tools/embed-rules.py`で`AGENTS.md`の先頭へ書き込む。cloneの場所は`dirname "$(readlink -e ~/.claude/skills/init-rules/IMPROVEMENTS.md)"`。
+**共通ルール** — `install-rules`スキルの「1つのPJ」の手順で、読み手（既定は両方）と個人の運用を選んでもらい、`tools/embed-rules.py`で`AGENTS.md`の先頭へ書き込む。cloneの場所は`dirname "$(readlink -e ~/.claude/skills/init-rules/IMPROVEMENTS.md)"`（Codexなら`~/.codex/skills/init-rules/IMPROVEMENTS.md`）。
 
 **`AGENTS.md`のPJ固有の部分**（共通ルールのブロックの下へ足す）— 固有差分だけ書く：
 ```markdown
@@ -132,7 +134,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 3.
 
 ## 完了
-- [x] <YYYY-MM-DD> 初期構成を/init-rulesで立ち上げ → [checkpoint](checkpoints/<YYYY-MM-DD>-初期構成.md)
+- [x] <YYYY-MM-DD> 初期構成をinit-rulesで立ち上げ → [checkpoint](checkpoints/<YYYY-MM-DD>-初期構成.md)
 
 ## 進行中
 (なし)
@@ -155,24 +157,24 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 
 **`checkpoints/<YYYY-MM-DD>-初期構成.md`**（初回分）：
 ```markdown
-# <YYYY-MM-DD> 初期構成の立ち上げ（/init-rules）
+# <YYYY-MM-DD> 初期構成の立ち上げ（init-rules）
 
 - 共通ルールを`AGENTS.md`へ書き込み、4軸 + checkpointを作成。
 - PJ種別: <①開発 / ②調査>。Git: <方針>。
 ```
 
-> 日付は実際の今日の日付を使う（環境のシステムリマインダ`currentDate`を参照）。リポ直下に`checkpoints/`ディレクトリを作る。ファイル名は`YYYY-MM-DD-作業名-中身.md`で、どちらも日本語の短い語。作業名は`REQUIREMENTS.md`のカードの見出しと同じ語にする（1日1作業1ファイル）。
+> 日付は実際の今日の日付を使う（会話に今日の日付が渡されていればそれを、無ければ`date +%F`で確かめる）。リポ直下に`checkpoints/`ディレクトリを作る。ファイル名は`YYYY-MM-DD-作業名-中身.md`で、どちらも日本語の短い語。作業名は`REQUIREMENTS.md`のカードの見出しと同じ語にする（1日1作業1ファイル）。
 
 ### 4. 確認とコミット
 - 生成したファイル一覧をユーザーに見せる。
-- Gitルール（共通ルール§5）に従ってコミット（雛形＋`.gitignore`等があれば一緒に）。**リモートがあればpushまで自動**。PJ側に「pushはユーザー指示時のみ」の明示がある時だけ止める。
-- §2.5で新規作成したリポは、初回push（`git push -u origin main`）でorigin/mainを確立する。これもpush方針に従う（既定は自動、オプトアウト宣言があれば確認）。
+- Gitルール（共通ルール§5）に従ってコミット（雛形＋`.gitignore`等があれば一緒に）。**共通ルールで「自動push」を選んでいて、リモートがあればpushまで行う**。選んでいない、またはPJ固有の指示に「pushはユーザー指示時のみ」とある時は、pushするかを聞く。
+- §2.5で新規作成したリポは、初回push（`git push -u origin main`）でorigin/mainを確立する。これもpush方針に従う。
 
 ## 改善案の記録（運用ルール）
 
-共通ルールや配布の仕組み（`embed-rules.py` / `install.sh` / `check-limits.sh`）について**使っていて気づいたこと**は、claude-rulesの`IMPROVEMENTS.md`に書く。配置先は`~/.claude/skills/init-rules/IMPROVEMENTS.md`で、リポrootの正本へのsymlink（追記はそのままgit管理下へ入り、再インストールでも消えない）。
+共通ルールや配布の仕組み（`embed-rules.py` / `install.sh` / `check-limits.sh`）について**使っていて気づいたこと**は、claude-rulesの`IMPROVEMENTS.md`に書く。配置先は`~/.claude/skills/init-rules/IMPROVEMENTS.md`（Codexは`~/.codex/skills/init-rules/IMPROVEMENTS.md`）で、どちらもリポrootの正本へのsymlink（追記はそのままgit管理下へ入り、再インストールでも消えない）。
 
-- **書く前に`readlink -e ~/.claude/skills/init-rules/IMPROVEMENTS.md`で健全性を1回確認する。** 切れていたら追記せず、claude-rulesの`install.sh`を再実行してから書く（リポを移動すると全PCのリンクが同時に切れ、追記が黙って落ちる）。
+- **書く前に`readlink -e <上の配置先>`で健全性を1回確認する。** 切れていたら追記せず、claude-rulesの`install.sh`を再実行してから書く（リポを移動すると全PCのリンクが同時に切れ、追記が黙って落ちる）。
 - 1件 = 日付＋状況＋気づき＋できれば改善案。**末尾へ追記**（古い順。先頭へ差し込むと他PCのcloneと全項目conflictする）。
 - **`rules/common-rules.md`などの正本そのものは編集しない。** 反映はclaude-rulesのcloneを持つPCで行う（README「ルールを変更するとき」）。
 - PJ固有の学びはここではなく対象PJの`NOTES.md`へ。全PJに効く共通ルールの話だけを書く。
