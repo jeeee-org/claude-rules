@@ -35,6 +35,13 @@ checkpoints/*-作業名-*で一括して引くため）。1日で終わった過
 
 対応表は1行に「日付<TAB>名前」。名前は「作業名-中身」（どちらも日本語の短い語）で、
 空白と / \\ : * ? " < > | は使えない。
+日付で始まる別の形の名前（`2026-07-16-llm-judge.md`・`2026-07-16_日本語.md`）は、1列目に**旧ファイル名**
+（拡張子なし）を書けば同じように移せる。移す時（docs/checkpoints/から）は plan がこの形も並べ、名前の候補に
+日付の後ろをそのまま入れる。改名だけの時（checkpoints/の中）は改名済みとみなし、表に書いた分だけ改名する。
+
+リンクの張り替えと検査は、コードフェンスとインラインコードの中を見ない（例示のリンクを本物として扱わない）。
+張り替えは、旧い位置で解決した行き先が実在する時だけ行う。symlinkのファイルは書き換えず（実体が別の場所に
+あり、そちらを書き換えてしまう）、リンク切れの検査は実体の位置で解決する。
 # で始まる行は読み飛ばす。exitの値は0=問題なし / 1=checkで問題あり / 2=中止（何も変えていない）。
 """
 import argparse
@@ -49,11 +56,33 @@ OLD_DIR = 'docs/checkpoints'
 NEW_DIR = 'checkpoints'
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 NAMED_RE = re.compile(r'^\d{4}-\d{2}-\d{2}-.+')
+# 日付で始まる、日付だけでない名前（2026-07-16-llm-judge・2026-07-16_日本語）
+PREFIXED_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})[-_](.+)$')
+# コードフェンスとインラインコード（リンクの張り替え・検査の対象外）
+CODE_RE = re.compile(r'^[ \t]*(```|~~~)[^\n]*\n.*?^[ \t]*\1[^\n]*$|(`+)[^\n]*?\2', re.M | re.S)
 # Markdownのリンク先。タイトル付き（空白を含む）は対象外
 LINK_RE = re.compile(r'(\]\()([^)\s]+?)(#[^)\s]*)?(\))')
 LINK_ANY = r'\]\([^)\s]+\)'
 BAD_NAME_RE = re.compile(r'[\s/\\:*?"<>|]')
 TEXT_SUFFIXES = ('.md', '.json')
+
+
+def outside_code(pattern, repl, text):
+    """コードフェンスとインラインコードの外だけで置き換える"""
+    out, pos = [], 0
+    for m in CODE_RE.finditer(text):
+        out.append(pattern.sub(repl, text[pos:m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(pattern.sub(repl, text[pos:]))
+    return ''.join(out)
+
+
+def finditer_outside_code(pattern, text):
+    code = [(m.start(), m.end()) for m in CODE_RE.finditer(text)]
+    for m in pattern.finditer(text):
+        if not any(a <= m.start() < b for a, b in code):
+            yield m
 
 
 def dated_re(src):
@@ -138,20 +167,41 @@ def is_external(target):
     return target.startswith(('/', '#')) or re.match(r'^[A-Za-z][A-Za-z0-9+.-]*:', target) is not None
 
 
-def old_checkpoints(ctx):
-    """移す元の中身を、日付名のもの／改名済みのもの／それ以外に分ける"""
+def old_checkpoints(ctx, listed=()):
+    """移す元の中身を、移すもの／改名済みのもの／それ以外に分ける。
+
+    移すもの = 日付名。移す時（docs/checkpoints/から）は日付で始まる別の形の名前も。
+    改名だけの時は、日付で始まる別の形の名前は改名済みとみなす（対応表 listed に旧ファイル名が
+    書いてあれば改名する）
+    """
     d = ctx.top / ctx.old_dir
     if not d.is_dir():
         return [], [], []
     dated, done, others = [], [], []
     for p in sorted(d.iterdir()):
-        if p.suffix == '.md' and DATE_RE.match(p.stem):
+        if p.suffix != '.md':
+            others.append(p)
+        elif DATE_RE.match(p.stem):
             dated.append(p)
-        elif ctx.rename_only and p.suffix == '.md' and NAMED_RE.match(p.stem):
+        elif PREFIXED_RE.match(p.stem) and (not ctx.rename_only or p.stem in listed):
+            dated.append(p)
+        elif ctx.rename_only and PREFIXED_RE.match(p.stem):
             done.append(p)
         else:
             others.append(p)
     return dated, done, others
+
+
+def date_of(stem):
+    return stem[:10]
+
+
+def default_name(path):
+    """名前の候補。日付で始まる別の形の名前なら日付の後ろ、日付名なら見出しから"""
+    m = PREFIXED_RE.match(path.stem)
+    if m:
+        return BAD_NAME_RE.sub('', m.group(2))
+    return guess_name(path)
 
 
 def pick_ctx(top, rel):
@@ -161,7 +211,8 @@ def pick_ctx(top, rel):
         return move, len(old_checkpoints(rename)[0])
     if old_checkpoints(rename)[0]:
         return rename, 0
-    raise Abort(f'{move.old_dir}/にも{rename.new_dir}/にも、日付名（YYYY-MM-DD.md）のcheckpointが無い')
+    raise Abort(f'{move.old_dir}/にも{rename.new_dir}/にも、日付名（YYYY-MM-DD.md）のcheckpointが無い'
+                f'（{rename.new_dir}/の中の「日付＋別の名前」を改名するなら、対応表に旧ファイル名を書いて apply --names）')
 
 
 def announce(ctx, dated, left):
@@ -187,6 +238,15 @@ def guess_name(path):
     return ''
 
 
+def read_names_keys(path):
+    """対応表の1列目（日付か旧ファイル名）だけを読む（改名だけの時に、表に書かれた旧ファイル名を拾うため）"""
+    keys = set()
+    for line in Path(path).read_text(encoding='utf-8').splitlines():
+        if line.strip() and not line.startswith('#') and '\t' in line:
+            keys.add(line.split('\t')[0].strip())
+    return keys
+
+
 def load_names(path, dated, ctx):
     names = {}
     for n, line in enumerate(Path(path).read_text(encoding='utf-8').splitlines(), 1):
@@ -196,8 +256,8 @@ def load_names(path, dated, ctx):
         if len(parts) != 2:
             raise Abort(f'{path}:{n}: 「日付<TAB>名前」の形になっていない')
         date, name = parts[0].strip(), parts[1].strip()
-        if not DATE_RE.match(date):
-            raise Abort(f'{path}:{n}: 日付の形ではない: {date}')
+        if not (DATE_RE.match(date) or PREFIXED_RE.match(date)):
+            raise Abort(f'{path}:{n}: 日付か、日付で始まる旧ファイル名ではない: {date}')
         if not name:
             raise Abort(f'{path}:{n}: {date}の名前が空')
         if BAD_NAME_RE.search(name):
@@ -211,11 +271,18 @@ def load_names(path, dated, ctx):
         raise Abort('対応表に無い日付がある: ' + ', '.join(missing))
     if extra:
         raise Abort(f'{ctx.old_dir}/に無い日付が対応表にある: ' + ', '.join(extra))
+    after = [f'{date_of(k)}-{v}' for k, v in names.items()]
+    dup = sorted({x for x in after if after.count(x) > 1})
+    if dup:
+        raise Abort('移した後の名前が重なる: ' + ', '.join(dup))
     return names
 
 
-def rewrite_links(text, old_file, new_file, moves, ctx):
-    """リンク先を旧い位置で解決し、移動後の位置から張り直す（実パスが移動元と一致する時だけ）"""
+def rewrite_links(text, old_file, new_file, moves, ctx, exists=lambda p: True):
+    """リンク先を旧い位置で解決し、移動後の位置から張り直す（実パスが移動元と一致する時だけ）。
+
+    コードの中は見ない。旧い位置で解決した行き先が実在しないリンク（例示など）は張り替えない
+    """
     old_dir, new_dir = posixpath.dirname(old_file), posixpath.dirname(new_file)
 
     def repl(m):
@@ -227,10 +294,12 @@ def rewrite_links(text, old_file, new_file, moves, ctx):
         dest = ctx.new_dir if resolved == ctx.old_dir else moves.get(resolved, resolved)
         if dest == resolved and old_dir == new_dir:
             return m.group(0)
+        if dest == resolved and not exists(resolved):
+            return m.group(0)  # 行き先が元々無い（例示・書き損じ）。張り替えると別の壊れ方になる
         slash = '/' if target.endswith('/') else ''
         return f'{m.group(1)}{posixpath.relpath(dest, new_dir or ".")}{slash}{m.group(3) or ""}{m.group(4)}'
 
-    return LINK_RE.sub(repl, text)
+    return outside_code(LINK_RE, repl, text)
 
 
 def rewrite_text(text, f, moves, ctx, exists):
@@ -258,26 +327,28 @@ def cmd_plan(ctx, left, out):
     dated, done, others = old_checkpoints(ctx)
     announce(ctx, dated, left)
     text = '# 日付<TAB>作業名-中身。候補は見出しから拾っただけなので直す（空白と / などは使えない）\n'
-    text += ''.join(f'{p.stem}\t{guess_name(p)}\n' for p in dated)
+    text += ''.join(f'{p.stem}\t{default_name(p)}\n' for p in dated)
     if out:
         Path(out).write_text(text, encoding='utf-8')
         print(f'{out}に{len(dated)}件を書いた', file=sys.stderr)
     else:
         sys.stdout.write(text)
     if done:
-        print(f'改名済みなので触らない: {len(done)}件', file=sys.stderr)
+        print(f'改名済みなので触らない: {len(done)}件（「日付＋別の名前」も改名するなら、対応表に'
+              '「旧ファイル名<TAB>名前」を足す）', file=sys.stderr)
     for p in others:
         print(f'日付名でないので移さない: {p.relative_to(ctx.top).as_posix()}', file=sys.stderr)
     return 0
 
 
 def cmd_apply(ctx, left, names_path, allow_dirty):
-    dated, done, others = old_checkpoints(ctx)
+    dated, done, others = old_checkpoints(ctx, read_names_keys(names_path))
     announce(ctx, dated, left)
     names = load_names(names_path, dated, ctx)
     if not allow_dirty and git(ctx.top, 'status', '--porcelain').strip():
         raise Abort('作業ツリーに未コミットの変更がある。commitしてから流す（--allow-dirtyで無視）')
-    moves = {f'{ctx.old_dir}/{d}.md': f'{ctx.new_dir}/{d}-{n}.md' for d, n in names.items()}
+    moves = {f'{ctx.old_dir}/{k}.md': f'{ctx.new_dir}/{date_of(k)}-{n}.md' for k, n in names.items()}
+    moves = {o: n for o, n in moves.items() if o != n}
     all_tracked = set(tracked(ctx, suffixes=''))
     untracked = sorted(set(moves) - all_tracked)
     if untracked:
@@ -287,18 +358,24 @@ def cmd_apply(ctx, left, names_path, allow_dirty):
         raise Abort('移動先が既にある: ' + ', '.join(clash))
 
     # 参照はリポ全体から探す（別のPJが場所付きで引いていることがある）。実パスで判断するので他のPJの記録は触らない
-    before = {f: (ctx.top / f).read_text(encoding='utf-8') for f in tracked(ctx) if (ctx.top / f).is_file()}
+    # symlinkは書き換えない（実体が別の場所にあり、そちらを書き換えてしまう）
+    before = {f: (ctx.top / f).read_text(encoding='utf-8') for f in tracked(ctx)
+              if (ctx.top / f).is_file() and not (ctx.top / f).is_symlink()}
+    existed = {f for f in all_tracked if (ctx.top / f).exists()}
+
+    def existed_before(p):
+        return p in existed or p == ctx.old_dir or any(t.startswith(p + '/') for t in existed)
     (ctx.top / ctx.new_dir).mkdir(exist_ok=True)
     for old, new in moves.items():
         git(ctx.top, 'mv', old, new)
     edited = []
     for f, text in before.items():
         new_f = moves.get(f, f)
-        out = rewrite_links(text, f, new_f, moves, ctx) if f.endswith('.md') else text
+        out = rewrite_links(text, f, new_f, moves, ctx, existed_before) if f.endswith('.md') else text
         out = rewrite_text(out, f, moves, ctx, all_tracked.__contains__)
         if new_f != f:
-            date = posixpath.basename(f)[:-len('.md')]
-            out = retitle(out, date, names[date])
+            stem = posixpath.basename(f)[:-len('.md')]
+            out = retitle(out, date_of(stem), names[stem])
         if out != text:
             (ctx.top / new_f).write_text(out, encoding='utf-8')
             edited.append(new_f)
@@ -359,6 +436,22 @@ def cmd_check(ctx):
         text = read_text(p)
         if text is None:
             continue
+        if p.is_symlink():
+            # 別の場所の実体。旧パスの言及はそちらのPJのもの。リンク切れだけを、実体の位置で解決して見る
+            # （symlinkの位置で解決すると、実体の隣を指すリンクが切れて見える）
+            real = p.resolve()
+            for m in finditer_outside_code(LINK_RE, text) if f.endswith('.md') else ():
+                target = m.group(2)
+                dest = real.parent / unquote(target)
+                if is_external(target) or dest.exists():
+                    continue
+                try:
+                    dest.resolve().relative_to(ctx.top)
+                except ValueError:
+                    continue  # 実体の側でもリポの外。この木からは判断しない
+                if ctx.under(f):
+                    problems.append(f'{f}（symlink → {real}）: リンクが切れている: {target}')
+            continue
         if not f.startswith(f'{ctx.new_dir}/'):  # checkpointは追記専用の記録。旧パスを書いた対応表などは正しい
             if f.endswith(TEXT_SUFFIXES):
                 # 移すPJのものと決まる言及だけ。別のPJのdocs/checkpoints/は、そのPJを移す時に見る
@@ -376,7 +469,7 @@ def cmd_check(ctx):
                 mentions.append(f'{f}:{line_no}: {line}')
         if not f.endswith('.md'):
             continue
-        for m in LINK_RE.finditer(text):
+        for m in finditer_outside_code(LINK_RE, text):
             target = m.group(2)
             if is_external(target):
                 continue

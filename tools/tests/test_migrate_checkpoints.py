@@ -96,6 +96,63 @@ class MigrateCheckpointsTest(unittest.TestCase):
         self.assertTrue(any(line.startswith('R') for line in status.splitlines()), status)  # 履歴を保った移動
         self.assertEqual(self.tool('check').returncode, 0)
 
+    def add(self, files):
+        for path, text in files.items():
+            p = self.repo / path
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding='utf-8')
+        self.git('add', '-A')
+        self.git('commit', '-q', '-m', 'more')
+
+    def test_dated_prefix_names_are_moved_by_old_file_name(self):
+        # 「日付＋英語名」「日付_日本語」も、対応表の1列目に旧ファイル名を書けば移せる
+        self.add({'docs/checkpoints/2026-01-03-llm-judge.md': '# 判断役の検討\n',
+                  'docs/checkpoints/2026-01-04_画面の整理.md': '# 画面\n\n前は[判断役](2026-01-03-llm-judge.md)。\n',
+                  'NOTES.md': '[検討](docs/checkpoints/2026-01-03-llm-judge.md)\n'})
+        plan = self.tool('plan')
+        self.assertIn('2026-01-03-llm-judge\tllm-judge', plan.stdout)   # 名前の候補は日付の後ろ
+        self.assertIn('2026-01-04_画面の整理\t画面の整理', plan.stdout)
+        self.write_names({**NAMES, '2026-01-03-llm-judge': '判断役-検討', '2026-01-04_画面の整理': '画面-整理'})
+        r = self.tool('apply', '--names', str(self.names_file))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((self.repo / 'checkpoints/2026-01-03-判断役-検討.md').exists())
+        self.assertIn('](2026-01-03-判断役-検討.md)', self.read('checkpoints/2026-01-04-画面-整理.md'))
+        self.assertIn('](checkpoints/2026-01-03-判断役-検討.md)', self.read('NOTES.md'))
+        self.assertNotIn('日付名でないので残した', r.stderr)
+
+    def test_names_that_collide_after_the_move_are_refused(self):
+        self.add({'docs/checkpoints/2026-01-01-extra.md': '# x\n'})
+        self.write_names({**NAMES, '2026-01-01-extra': '立ち上げ'})
+        r = self.tool('apply', '--names', str(self.names_file))
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('重なる', r.stderr)
+
+    def test_links_inside_code_and_to_missing_targets_are_left_alone(self):
+        self.add({'docs/checkpoints/2026-01-05.md': (
+            '# 2026-01-05\n\n例: `[text](url)` と書く。\n```\n[見本](sample.md)\n```\n'
+            '書き損じ[無い先](nothing/here.md)。本物は[ADR](../adr/001.md)。\n')})
+        self.write_names({**NAMES, '2026-01-05': '例示'})
+        r = self.tool('apply', '--names', str(self.names_file))
+        text = self.read('checkpoints/2026-01-05-例示.md')
+        self.assertIn('`[text](url)`', text)
+        self.assertIn('[見本](sample.md)', text)
+        self.assertIn('[無い先](nothing/here.md)', text)
+        self.assertIn('](../docs/adr/001.md)', text)  # 実在する先は張り替える
+        self.assertNotIn('`[text](url)`', r.stdout)  # 検査もコードの中を見ない
+
+    def test_symlink_is_not_rewritten_and_is_checked_at_its_real_place(self):
+        other = Path(self._tmp.name) / 'other'
+        other.mkdir()
+        (other / 'NOTES.md').write_text('[隣](sibling.md) と [旧](docs/checkpoints/2026-01-01.md)\n'
+                                        '本文の docs/checkpoints/2026-01-01.md は隣のPJの記録\n', encoding='utf-8')
+        (other / 'sibling.md').write_text('x\n', encoding='utf-8')
+        (self.repo / 'NOTES-shared.md').symlink_to(other / 'NOTES.md')
+        self.git('add', '-A'); self.git('commit', '-q', '-m', 'link')
+        self.write_names(NAMES)
+        r = self.tool('apply', '--names', str(self.names_file))
+        self.assertIn('[旧](docs/checkpoints/2026-01-01.md)', (other / 'NOTES.md').read_text(encoding='utf-8'))  # 実体を書き換えない
+        self.assertNotIn('NOTES-shared.md', r.stdout)  # 実体の隣にある sibling.md へのリンクは切れていない
+
     def test_apply_refuses_dirty_tree(self):
         (self.repo / 'PROGRESS.md').write_text('変更\n', encoding='utf-8')
         self.write_names(NAMES)
