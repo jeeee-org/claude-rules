@@ -1,4 +1,4 @@
-<!-- claude-rules:embed:begin (版 3bf4bcf+dirty / embed-both / 選択 autocommit,autopush,worktree,toolname。claude-rules/tools/embed-rules.pyが書き込む。中を編集しない — 出典 https://github.com/jeeee-org/claude-rules のrules/common-rules.md) -->
+<!-- claude-rules:embed:begin (版 4f73b81 / embed-both / 選択 autocommit,autopush,worktree,toolname。claude-rules/tools/embed-rules.pyが書き込む。中を編集しない — 出典 https://github.com/jeeee-org/claude-rules のrules/common-rules.md) -->
 # 共通ルール（全PJ共通の下地）
 
 全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。

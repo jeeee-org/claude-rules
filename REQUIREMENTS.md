@@ -20,11 +20,7 @@
 
 > 依頼されたらここへカードを立ててから動く。**終わったら消して`PROGRESS.md`の完了へ1行**。
 
-### グローバルの廃止（2026-09-26起票）
-- **何をする** = 共通ルールをグローバルに入れるのをやめ、全PJの`AGENTS.md`へ書き込む形に一本化する。このPCの自分のPJ（約23リポ）は個人の運用を全部入れ、既存の`CLAUDE.md`は`AGENTS.md`へ移して統一する。業務・共有リポにも書き込んでコミットする（他PCで）
-- **叶っている状態** = `install.sh`が共通ルールをグローバルへ入れず既存のブロックを外す。新規PJも`init-rules`で`AGENTS.md`に共通ルールが入る。このPCの全PJが`AGENTS.md`に共通ルールとPJ固有の指示を持ち`CLAUDE.md`が無い。他PCの手順がREADMEにある
-- **現在地**（2026-09-26）= 着手。道具の側から
-- **作業ログ** = `checkpoints/*-グローバルの廃止-*`（0件）
+(なし)
 
 ## 要求
 
@@ -35,7 +31,7 @@
 - **何に困っているか** = 同じ内容のものを読み手ごとに2枚ずつ保守する常時コスト。**共通ルールは2026-09-26に解消**——正本を`rules/common-rules.md`の1枚にし、Claude用・Codex用・PJ書き込み用を`tools/build-rules.py`で作る（文体はClaude側、読み手で違う所は`{{語}}`と`<!-- if:… -->`）。**残るのは`init-rules`の2枚**（`skills/init-rules`と`skills/codex-init-rules`）と、置き場が読み手ごとに分かれていること。
 - **層ごとに状況が違う**（ここを混ぜると判断を誤る）:
   - **PJ層のルール = 解決済み**。2026-09-18のv2.1.277でClaude CodeがAGENTS.mdを直接読むようになった。
-  - **グローバル層のルール = 未解決**。`~/.codex/AGENTS.md`はClaudeの探索経路（作業dirとその祖先）の外で、今後も読まれる見込みは無い。agents.md本体のissue #91が共通の置き場`~/.config/agents/AGENTS.md`を提案中だが**提案段階**。
+  - **グローバル層のルール = 廃止で解消**（2026-09-26）。共通ルールはグローバルに置かず、各PJの`AGENTS.md`へ書き込む。PJのルールファイルも`AGENTS.md`に統一した。
   - **skills = フォーマットは決着済み、置き場は共通パスがあるがClaudeが読まない**。規格（Agent Skills Open Standard、2025-12公開、Linux Foundation AAIF管理）は**置き場を規定せず**中身だけを定める。共通の慣習は`<project>/.agents/skills/`と`~/.agents/skills/`で、**Codexは既にこちらへ移行済み**（ユーザー層は`$HOME/.agents/skills`）。**Claude Codeは走査しない**（2026-09-20実測・公式ドキュメントにも記載なし）。要望はanthropics/claude-code #66352（ユーザー層）と#31005に実在。
 - **選択肢**（2026-09-20時点。Bは2026-09-26に配り方の選択肢として実装＝`tools/embed-rules.py`。全面移行はしない）:
   - A. 標準を待つ。グローバルルールは`~/.config/agents/AGENTS.md`（提案段階＋Codex移行が要る）、skillsはClaude Codeが`.agents/skills/`を拾うかどうか。**skillsのユーザー層が最も軽い要求**（走査先を1つ足すだけ・優先規則は実装ガイドに既出・利用者自身のホームなので信頼の問題が無い）。時期は不明。
@@ -47,6 +43,7 @@
 
 ## やること / バックログ
 - 既存PJを、開いた時に`/migrate-rules`で記録ルールの改訂に揃える（checkpointの移動・`REQUIREMENTS.md`の新設・ADR節の振り分け・`NOTES.md`の整理）。checkpointを移すかはPJごとにユーザーが決める（2026-09-14時点で未移行は17PJ。kakeiboとdiscは移行済み）。
+- 他PCへグローバル廃止を反映する：作業するPJを`git pull`（このPCで書き込み済み）→ まだのPJ（業務・共有リポ）へAIの案内で書き込んでcommit → 最後に`./install.sh`でグローバルのブロックを外す（README「日付ごとの一回限りの手当て」2026-09-26）。
 - 他PCでclaude-rulesの**cloneを取り直して**`./install.sh`（2026-09-17にリポを作り直したため。消す前に`IMPROVEMENTS.md`への未pushの追記を確認する）。quorumは`git pull && ./install.sh`で、installがトリアージブロックの残骸を取り除く。`settings.json`の分類フック登録は各PCで手で外す。
 - ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
 
@@ -54,6 +51,5 @@
 - [ ] 常時トリアージ規則を廃止した今、`hooks/triage-classifier.sh`・`hooks/triage-rubric.txt`・`skills/codex-triage/`（opt-inの分類ツール）を配布し続けるか。
 - [ ] `migrate-rules`のCodex版を作るか（2026-09-14にClaude版だけ作った。Codexをメインに使うPJで同じ移行の需要があるか未確認）。**統一の要求と連動**——1枚にするなら作る作らないの問いが消える。
 - [ ] `init-rules`の2枚も共通の正本から作るか（要求のC。`tools/build-rules.py`の仕掛けを流用できる）。
-- [ ] Codexの`AGENTS.md`での`@path`参照がホーム直下（`@~/.claude/...`）まで届くか。届けばBのコピー量が「全文×N」から「1行×N」になる。2026-09-20は実測できず（Codexが`gpt-5.6-sol`で弾かれた）。
 - [ ] `install.sh`のCodexへのskills配り先を`~/.codex/skills/`から`~/.agents/skills/`へ移すか。手元のCodex 0.153.4は両方の文字列を持ち現状は生きているが、公式が挙げるのは`.agents`側だけ。移すとClaude Codeからは見えないままなので、Cを採るかどうかと連動する。
 - [ ] Cで「雛形を埋め込む形」と「散文」のどちらへ寄せるか。埋め込みはCodexにも雛形本文が渡り、散文は両方軽くなる代わりにClaude側が今の雛形を失う。
