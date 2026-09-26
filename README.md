@@ -124,9 +124,32 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 
 ### 日付ごとの一回限りの手当て
 
-- **2026-09-26**: **共通ルールをグローバルからPJへ移した**。そのPCで作業するPJを先に`git pull`する（このPCで書き込み済みのPJは、pullだけで`AGENTS.md`に共通ルールが入る）。まだ入っていないPJ（業務・共有リポなど）は、AIに「全PJのルールを最新にして」と頼んで書き込み、commitする（`install-rules`の「複数のPJをまとめて」）。**PJが揃ってから**`./install.sh`を実行する——グローバルの共通ルールのブロックが外れる（控えは`.bak`）。先に道具だけ入れるなら`./install.sh --keep-global-rules`
+- **2026-09-26**: **共通ルールをグローバルからPJへ移した**。手順は下の「2026-09-26の移行（他のPC）」。
 - **2026-09-25**: この日の`04128f3`と`397b2d7`の間に`install.sh`を走らせたPCは、`~/.claude/settings.json`の`env`に`CLAUDE_CODE_ENABLE_TODO_TOOLS`が残る（to-doは全体でなくリポ単位へ変えたため）。`jq '.env' ~/.claude/settings.json`で見て、あれば消す。業務のPCでループのひな型を入れたリポは、4の`--update`で上げる（同日に不具合の修正・範囲の検査・昇格の仕組み・歯止めが入った。手で足した上限や起票の決まりは、ひな型側にも入ったので重複を見て整理する）
 - **2026-09-17**: リポを作り直したので、それ以前のcloneは`git pull`が進まない。**cloneを取り直す**（消す前に`IMPROVEMENTS.md`の未pushの追記を確認）
+
+### 2026-09-26の移行（他のPC）
+
+このPCで行った移行（共通ルールをグローバルから各PJの`AGENTS.md`へ移し、`CLAUDE.md`を`AGENTS.md`へ統一し、`init-rules`を1枚にした）を、他のPCで行う手順。**そのPCのClaude Code（またはCodex）にこの節を読ませて進める。** 何が変わったかは`checkpoints/2026-09-26-*`にある。
+
+**順番が大事**：PJへ共通ルールを入れる → 最後にグローバルのブロックを外す。逆にすると、入れるまでの間ルールの無いPJが出る。
+
+1. **claude-rulesを最新にする**：`git -C <clone> pull --ff-only`。止まったら上の手順3（`IMPROVEMENTS.md`の衝突）。2026-09-17より前のcloneは取り直す。**`install.sh`はまだ実行しない**。
+2. **PJの状態を見る**：`python3 <clone>/tools/embed-rules.py --scan <PJを並べた場所>`。作業ツリーが汚れているPJは先に片付けるか、今回は飛ばす（無関係な変更を混ぜない）。
+3. **このPCでも作業するPJ（個人リポ）は`git pull`する**。元のPCで書き込み・統一済みなので、pullだけで`AGENTS.md`に共通ルールが入り`CLAUDE.md`が消える。手元に`CLAUDE.md`の未commitの変更があれば、pullの前に中身を見て、要る分は`AGENTS.md`のブロックの下へ移す。
+4. **まだのPJ（業務・共有リポなど、元のPCに無いPJ）に書き込む**：`install-rules`スキルの「1つのPJ」の手順で1つずつ（選択肢で案内される）。
+   - **読み手と個人の運用はPJごとに利用者に聞く**。業務・共有リポは、チームの運用に合わない個人の運用（自動push等）を入れない選択もある。
+   - **チームで使うリポでは、全員のClaude Codeがv2.1.277以降かを利用者に確認する**。古い人がいれば`--absorb-claude-md`を付けない（`CLAUDE.md`を残し、先頭の`@AGENTS.md`で繋ぐ）。
+   - **worktree必須のリポは、そのPJの決まりどおりworktreeのブランチで書き込み、PRで入れる**（mainへ直接commitしない）。
+   - `--absorb-claude-md`が出した「機械で置き換えなかった行」を文脈を見て直す。
+   - commitはPJのGit運用に従う。記録の関門は、PJの作業ではない配布の変更なので理由を述べて`CR_SKIP_RECORD_GUARD=1`で通し、pushの関門にはトレーラ`記録なし: 共通ルールの配布の変更`を付ける。
+5. **最後に`./install.sh`**（`--no-codex`などの指定は前回と同じ）。`~/.claude/CLAUDE.md`・`~/.codex/AGENTS.md`から以前の共通ルールのブロックが外れ（控えは`.bak`）、Codexの`init-rules`が1枚のものに置き換わり、`install-rules`スキルが入る。**まだ書き込んでいないPJが残っているなら、外す前に利用者に確認する**（`--keep-global-rules`で残せる）。
+6. **確かめる**：
+   - `--scan`で対象のPJが全部「最新」
+   - `~/.claude/CLAUDE.md`に`claude-rules:begin`が無い（`grep -c claude-rules:begin ~/.claude/CLAUDE.md`が0）
+   - Claude Codeを起動し直し、PJで「共通ルール§5.1の見出しは？」と聞いて答えられる
+   - Codexが動くPCなら、空のリポで`init-rules`を試す（元のPCではCodexがモデルのエラーで動かず未確認）
+7. **気づいたズレは`IMPROVEMENTS.md`へ**（そのPCで正本は直さない）。
 
 ## PJへ共通ルールを書き込む
 
