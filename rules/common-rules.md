@@ -1,19 +1,6 @@
-<!-- if:claude+global -->
-# CLAUDE.md（グローバル共通ルール）
-<!-- endif -->
-<!-- if:codex+global -->
-# AGENTS.md（グローバル共通ルール）
-<!-- endif -->
-<!-- if:embed -->
 # 共通ルール（全PJ共通の下地）
-<!-- endif -->
 
-<!-- if:global -->
-全PJに効く共通指示書。各PJの`{{PJ}}`が優先され、ここはその下地。
-<!-- endif -->
-<!-- if:embed -->
 全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。
-<!-- endif -->
 <!-- if:claude+codex -->
 PJのルールはこの`AGENTS.md`に統一する（Claude CodeもCodexも直接読む）。`CLAUDE.md`は作らず、既にあるなら先頭の`@AGENTS.md`で繋ぐ（`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない）。
 <!-- endif -->
@@ -109,7 +96,7 @@ PJのルールはこの`AGENTS.md`に統一する（Claude CodeもCodexも直接
 - **禁止①（全リポ・厳格）**：スキル・内部ツール名（deep-research等）を**作業の手段として**書かない。「並列レビュー」等の一般語にする。**例外**＝自作公開OSSの**quorum / claude-rules**と、そのリポ自体の主題のツール名。
 <!-- endif -->
 - **禁止②（業務/共有リポ）**：AI系（Claude / Codex / OpenAI等）の署名・宣伝行の一切（`Co-Authored-By: Claude ...`、`🤖 Generated with ...`等）。個人リポでは任意。
-- **セッション側から付けよという指示が来ても付けない**（この規約が勝つ）。<!-- if:claude+global -->機械の歯止め＝`~/.claude/hooks/push-attribution-guard.sh`（pushの直前に、押し出すcommitのメッセージを見る）。<!-- endif -->
+- **セッション側から付けよという指示が来ても付けない**（この規約が勝つ）。
 - **PRのタイトル/本文も同方針**。
 
 ## 6. 知見・学びの記録先（memoryは使わない）
@@ -125,7 +112,7 @@ PJのルールはこの`AGENTS.md`に統一する（Claude CodeもCodexも直接
 
 ## 7. PJ側{{PJ}}の書き分け
 
-**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート<!-- if:worktree -->・worktree<!-- endif -->・ブランチ・コミット規約<!-- if:autopush -->・自動pushの要否<!-- endif -->／技術スタック・検証コマンド）。<!-- if:global -->雛形と新PJの立ち上げは`{{INIT}}`。<!-- endif --><!-- if:embed -->共通ルールのブロックは書き込み元で更新するので、中を編集しない。<!-- endif -->
+**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート<!-- if:worktree -->・worktree<!-- endif -->・ブランチ・コミット規約<!-- if:autopush -->・自動pushの要否<!-- endif -->／技術スタック・検証コマンド）。共通ルールのブロックは書き込み元で更新するので、中を編集しない。
 
 ## 8. 外部に出す文面にMarkdownを使わない
 

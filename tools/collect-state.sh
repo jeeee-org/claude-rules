@@ -15,11 +15,11 @@ CX="${CODEX_HOME:-$HOME/.codex}"
 OUT="$HOME/claude-rules-state.txt"
 
 # 正本として比較する対象（install.sh が配るものと対応）
-FILES="rules/common-rules.md rules/global-rules.md rules/codex-global-rules.md install.sh
+FILES="rules/common-rules.md tools/build-rules.py tools/embed-rules.py install.sh
 hooks/triage-classifier.sh hooks/codex-triage.sh hooks/triage-rubric.txt
 skills/init-rules/SKILL.md skills/codex-init-rules/SKILL.md
-skills/codex-triage/SKILL.md skills/codex-triage/agents/openai.yaml
-tools/collect-state.sh README.md CLAUDE.md"
+skills/codex-triage/SKILL.md skills/codex-triage/agents/openai.yaml skills/install-rules/SKILL.md
+tools/collect-state.sh README.md AGENTS.md"
 
 hide() { sed "s#$HOME#~#g"; }
 
@@ -49,22 +49,8 @@ for f in $FILES; do
   fi
 done
 
-echo "### drift  正本 vs 生成物（差分があれば手編集された証拠）"
-for pair in "rules/global-rules.md|$CC/CLAUDE.md|claude-rules" \
-            "rules/codex-global-rules.md|$CX/AGENTS.md|codex-rules"; do
-  IFS='|' read -r src dst marker <<<"$pair"
-  echo "  -- $marker"
-  if [ ! -f "$ROOT/$src" ]; then echo "     正本なし"; continue; fi
-  if [ ! -f "$dst" ]; then echo "     生成物なし: $(echo "$dst" | hide)"; continue; fi
-  awk "/${marker}:begin/,/${marker}:end/" "$dst" > "/tmp/_crs_$marker" 2>/dev/null
-  if diff -q "$ROOT/$src" "/tmp/_crs_$marker" >/dev/null 2>&1; then
-    echo "     一致"
-  else
-    echo "     DRIFT ↓"
-    diff -u "$ROOT/$src" "/tmp/_crs_$marker" | tail -n +3 | head -60 | sed 's/^/     /'
-  fi
-  rm -f "/tmp/_crs_$marker"
-done
+echo "### pj-rules  PJごとの共通ルールの状態（2026-09-26からグローバルでなく各PJの AGENTS.md）"
+python3 "$ROOT/tools/embed-rules.py" --scan "$(dirname "$ROOT")" 2>&1 | hide
 
 echo "### blocks  常時ロードされるファイルのブロック構成と並び"
 for f in "$CC/CLAUDE.md" "$CX/AGENTS.md"; do

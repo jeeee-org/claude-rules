@@ -2,7 +2,7 @@
 # commit-record-guard.sh — PreToolUse（Bash）フック
 # commitしようとした時に、作業の記録（REQUIREMENTS.md / PROGRESS.md / NOTES.md /
 # checkpoints/）が一緒に変わっているかを見る。1つも無ければcommitを止めて差し戻す。
-# グローバル§3「タスク完了時（必須）」の抜けを、自己申告から独立して捕まえるため。
+# 共通ルール§3「タスク完了時（必須）」の抜けを、自己申告から独立して捕まえるため。
 #
 # **判定できるのは「この呼び出しはcommitだけ」という形に限られる。** PreToolUseは
 # コマンドの実行前に走るので、同じ呼び出しの中でファイルを書いてからcommitする形では、
@@ -205,7 +205,7 @@ cat >&2 <<MSG
 記録の関門: このcommitに作業の記録が入っていません（見たリポ: $root）。
 変更にREQUIREMENTS.md / PROGRESS.md / NOTES.md / checkpoints/のどれも含まれていません。
 
-グローバル§3「タスク完了時（必須）」= 作業ログをその作業のcheckpointへ、PROGRESS.mdの
+共通ルール§3「タスク完了時（必須）」= 作業ログをその作業のcheckpointへ、PROGRESS.mdの
 完了と次の一手、要件・スコープの変化をREQUIREMENTS.mdへ、学びをNOTES.mdへ。
 
 このコマンドは**1行も実行されていません**（git addも走っていません）。記録を書いて

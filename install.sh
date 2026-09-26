@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# claude-rules をローカルの Claude Code / Codex 設定に配置する。
-#   rules/global-rules.md       -> $CLAUDE_CONFIG_DIR/CLAUDE.md
-#   rules/codex-global-rules.md -> $CODEX_HOME/AGENTS.md
-#   （2枚とも rules/common-rules.md から tools/build-rules.py で作る生成物。先に作り直してから配る）
+# claude-rules の道具（スキル・フック・判定スクリプト）をローカルの Claude Code / Codex 設定に配置する。
 #   skills/* と hooks/*         -> 各環境の対応ディレクトリ
+# **共通ルールそのものはここでは入れない**（2026-09-26にグローバルへの注入を廃止）。共通ルールは
+# 各PJの AGENTS.md へ tools/embed-rules.py で書き込む（AIに「このPJにルールを入れて」と頼めば
+# install-rules スキルが案内する）。以前の版が $CLAUDE_CONFIG_DIR/CLAUDE.md・$CODEX_HOME/AGENTS.md へ
+# 入れたブロックは、ここで取り除く（控えを .bak に取る。PJへの書き込みが済むまで残すなら
+# --keep-global-rules）。
 #   IMPROVEMENTS.md            -> 各環境の skills/init-rules/ から正本への symlink
 # 配置先を変えたい場合:
 #   CLAUDE_CONFIG_DIR=/path/.claude CODEX_HOME=/path/.codex ./install.sh
@@ -24,13 +26,15 @@ set -euo pipefail
 INSTALL_CODEX="${CLAUDE_RULES_INSTALL_CODEX:-1}"
 REGISTER_HOOKS="${CLAUDE_RULES_REGISTER_HOOKS:-1}"
 DISPLAY_SETTINGS="${CLAUDE_RULES_DISPLAY_SETTINGS:-1}"
+KEEP_GLOBAL_RULES=0
 for arg in "$@"; do
   case "$arg" in
     --no-codex) INSTALL_CODEX=0 ;;
     --no-hook-register) REGISTER_HOOKS=0 ;;
     --no-display-settings) DISPLAY_SETTINGS=0 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings）" >&2; exit 2 ;;
+    --keep-global-rules) KEEP_GLOBAL_RULES=1 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings / --keep-global-rules）" >&2; exit 2 ;;
   esac
 done
 case "$INSTALL_CODEX" in
@@ -98,30 +102,8 @@ warn_if_not_upstream_clone() {
 }
 warn_if_not_upstream_clone
 
-# 共通ルールの正本は rules/common-rules.md。Claude用・Codex用の2枚はそこから作る生成物なので、
-# 配る前に作り直す（正本だけ直して生成を忘れた、を配る側で拾う。揃っていれば何も書かない）
-if command -v python3 >/dev/null 2>&1; then
-  python3 "$SRC_DIR/tools/build-rules.py"
-else
-  echo "※ python3が無いので共通ルールの生成を飛ばし、コミット済みの生成物をそのまま配ります" >&2
-fi
-
-RULES_FILE="$SRC_DIR/rules/global-rules.md"
 TARGET_MD="$CLAUDE_CONFIG_DIR/CLAUDE.md"
-CODEX_RULES_FILE="$SRC_DIR/rules/codex-global-rules.md"
 CODEX_TARGET_MD="$CODEX_HOME/AGENTS.md"
-
-# 正本の自己検証（マーカー欠落のまま配ると注入が壊れる）
-grep -q 'claude-rules:begin' "$RULES_FILE" && grep -q 'claude-rules:end' "$RULES_FILE" || {
-  echo "✗ rules/global-rules.md にマーカーがありません。修正してから再実行してください。" >&2
-  exit 1
-}
-if [ "$INSTALL_CODEX" = 1 ]; then
-  grep -q 'codex-rules:begin' "$CODEX_RULES_FILE" && grep -q 'codex-rules:end' "$CODEX_RULES_FILE" || {
-    echo "✗ rules/codex-global-rules.md にマーカーがありません。" >&2
-    exit 1
-  }
-fi
 
 [ -f "$IMPROVEMENTS_FILE" ] || {
   echo "✗ IMPROVEMENTS.md がありません（symlink 先の正本）。" >&2
@@ -305,31 +287,25 @@ if [ "$INSTALL_CODEX" = 1 ]; then
   chmod +x "$CODEX_HOME/tools/check-limits.sh"
 fi
 
-# グローバル CLAUDE.md に claude-rules ブロックを注入する
-# （マーカー間を置換、無ければ末尾に追記。quorum-triage と同方式）
-if [ -f "$TARGET_MD" ] && grep -q 'claude-rules:begin' "$TARGET_MD"; then
-  awk -v rules="$RULES_FILE" '
-    /claude-rules:begin/ {skip=1; while ((getline line < rules) > 0) print line; close(rules); next}
-    /claude-rules:end/   {skip=0; next}
-    !skip {print}
-  ' "$TARGET_MD" > "$TARGET_MD.tmp" && mv "$TARGET_MD.tmp" "$TARGET_MD"
-else
-  { [ -s "$TARGET_MD" ] && echo ""; cat "$RULES_FILE"; } >> "$TARGET_MD"
-fi
-echo "  - CLAUDE.md に claude-rules ブロックを反映"
-
-if [ "$INSTALL_CODEX" = 1 ]; then
-  if [ -f "$CODEX_TARGET_MD" ] && grep -q 'codex-rules:begin' "$CODEX_TARGET_MD"; then
-    awk -v rules="$CODEX_RULES_FILE" '
-      /codex-rules:begin/ {skip=1; while ((getline line < rules) > 0) print line; close(rules); next}
-      /codex-rules:end/   {skip=0; next}
-      !skip {print}
-    ' "$CODEX_TARGET_MD" > "$CODEX_TARGET_MD.tmp" && mv "$CODEX_TARGET_MD.tmp" "$CODEX_TARGET_MD"
-  else
-    { [ -s "$CODEX_TARGET_MD" ] && echo ""; cat "$CODEX_RULES_FILE"; } >> "$CODEX_TARGET_MD"
+# 以前の版がグローバルへ入れた共通ルールのブロックを取り除く（2026-09-26に廃止。共通ルールは各PJの
+# AGENTS.md にある）。残すとPJ側と二重に読まれる。PJへの書き込みが済む前に外すとルールの無いPJが
+# 出るので、移行の途中は --keep-global-rules で残せる
+remove_global_block() { # remove_global_block <ファイル> <マーカー名>
+  local f="$1" m="$2"
+  [ -f "$f" ] && grep -q "$m:begin" "$f" || return 0
+  if [ "$KEEP_GLOBAL_RULES" = 1 ]; then
+    echo "※ $f に以前の共通ルールのブロックを残しました（--keep-global-rules）。PJと二重に読まれます" >&2
+    return 0
   fi
-  echo "  - Codex AGENTS.md に codex-rules ブロックを反映"
-else
+  cp "$f" "$f.bak"
+  awk -v m="$m" '$0 ~ m":begin" {skip=1; next} $0 ~ m":end" {skip=0; next} !skip {print}' "$f.bak" |
+    awk 'NF {blank=0; print; next} !blank++ {print}' > "$f.tmp" && mv "$f.tmp" "$f"
+  echo "  - $f から以前の共通ルールのブロックを取り除きました（控え: $f.bak）"
+}
+remove_global_block "$TARGET_MD" claude-rules
+remove_global_block "$CODEX_TARGET_MD" codex-rules
+
+if [ "$INSTALL_CODEX" != 1 ]; then
   # 既存の配置は**自動で消さない**（env 1つでユーザーのファイルを削るのは危険）。
   # 残っていることと、消す手順だけを知らせる。
   for leftover in "$CODEX_HOME/skills/init-rules" "$CODEX_HOME/skills/triage" \
@@ -339,9 +315,6 @@ else
       echo "   不要なら: rm -rf \"$leftover\"" >&2
     fi
   done
-  if [ -f "$CODEX_TARGET_MD" ] && grep -q 'codex-rules:begin' "$CODEX_TARGET_MD"; then
-    echo "※ $CODEX_TARGET_MD に codex-rules ブロックが残っています（マーカー間を手で削除してください）" >&2
-  fi
 fi
 
 # 数値上限の目安チェック（グローバル §2。超過しても失敗にはしない）
@@ -349,7 +322,6 @@ echo ""
 "$CLAUDE_CONFIG_DIR/tools/check-limits.sh" "$SRC_DIR" || true
 
 echo "✓ インストール完了: $CLAUDE_CONFIG_DIR"
-echo "  - CLAUDE.md（claude-rules ブロック）"
 echo "  - skills/init-rules"
 echo "  - skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
 echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える）"
@@ -366,7 +338,6 @@ fi
 echo "  - tools/check-limits.sh（常時ロード上限の判定。§2 から参照）"
 echo "  - tools/check-record-guard.sh（記録の関門の疎通確認）"
 if [ "$INSTALL_CODEX" = 1 ]; then
-  echo "  - $CODEX_TARGET_MD（codex-rules ブロック）"
   echo "  - $CODEX_HOME/skills/init-rules"
   echo "  - $CODEX_HOME/skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
   echo "  - $CODEX_HOME/skills/install-rules"
@@ -383,6 +354,10 @@ echo "同じpushの直前に、AI帰属行の関門（§5.2 禁止②）も見�
 echo "指示が渡っていても規約が勝ちます。例外はCR_SKIP_ATTRIBUTION_GUARD=1のみです。"
 echo "効いているかは作業するリポで、**単独の呼び出しで**確かめてください:"
 echo "  $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh --repo <リポ>"
+echo ""
+echo "共通ルールは各PJの AGENTS.md にあります（グローバルには入れません）。PJごとの状態は:"
+echo "  python3 $SRC_DIR/tools/embed-rules.py --scan <PJを並べた場所>"
+echo "入れる・更新するのはAIに「このPJにルールを入れて」「全PJのルールを最新にして」と頼めば案内されます。"
 echo ""
 echo "Claude Code を再起動するか /reload-skills を実行してください。"
 if [ "$INSTALL_CODEX" = 1 ]; then echo "Codex分類を使う場合: $CODEX_HOME/hooks/codex-triage [codex options] -- '<prompt>'"; fi

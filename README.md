@@ -1,23 +1,27 @@
 # claude-rules
 
-Claude CodeとCodexの**グローバル共通ルール**、および各環境の`init-rules`スキルを複数PCへ配布・同期するためのリポジトリ。LLM固有の指示面は`~/.claude/CLAUDE.md`と`~/.codex/AGENTS.md`に分離し、4軸 + checkpointのPJ文書は共有する。
+Claude CodeとCodexの**共通ルール**（4軸 + checkpointの記録・進行・Git・文面の決まり）と、それを入れる道具・スキルを配るリポジトリ。
 
-[quorum](https://github.com/jeeee-org/quorum)と同じ**install.sh + マーカーブロック方式**。`~/.claude/CLAUDE.md`に載るのは次の1ブロック：
+**共通ルールは各PJの`AGENTS.md`の先頭に書き込む**（2026-09-26〜。それまでは`~/.claude/CLAUDE.md`・`~/.codex/AGENTS.md`へ注入していた）。PJ単体で配ることが増えたため、重複を避けるより**PJだけで完結すること**を取った。重複した写しは正本（`rules/common-rules.md`）からの生成物なので、手で保守しない。
 
 ```
-<!-- claude-rules:begin -->  … 共通骨格§1〜9（このリポが正本）
+<PJ>/AGENTS.md
+  <!-- claude-rules:embed:begin (版 … / embed-both / 選択 …) -->  … 共通ルール§1〜9（このリポが正本）
+  <!-- claude-rules:embed:end -->
+  # AGENTS.md — <PJ>                                              … PJ固有の指示（手で書く）
 ```
 
-（quorumが注入していた常時トリアージのブロックは2026-09-15に廃止。quorumは`/quorum`の明示呼び出しだけで使う）
+PJのルールファイルは`AGENTS.md`に統一し、`CLAUDE.md`は置かない（Claude Codeはv2.1.277以降`AGENTS.md`を直接読む）。
 
 ## インストール（新PC）
 
+**AIに頼む**：cloneしたこのリポでClaude Code / Codexを開いて「ルールを入れて」と言う。リポの`.claude/skills/`・`.agents/skills/`から`install-rules`スキルが見え、道具の導入（`install.sh`）とPJへの書き込みを選択肢で案内する。オプションを覚える必要は無い。
+
 ```bash
 git clone git@github.com:jeeee-org/claude-rules.git
-cd claude-rules && ./install.sh
+cd claude-rules && ./install.sh          # 道具（スキル・フック・判定）だけ。共通ルールは入れない
+python3 tools/embed-rules.py --scan ~/Develop   # PJごとの共通ルールの状態
 ```
-
-AIに任せるなら、cloneしたこのリポでClaude Code / Codexを開いて「ルールを入れて」と言う（リポの`.claude/skills/`・`.agents/skills/`から`install-rules`スキルが見え、オプションを選択肢で案内する）。
 
 quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同。マーカー置換なので再実行は冪等）。
 
@@ -26,25 +30,23 @@ quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同
 | パス | 役割 |
 |---|---|
 | `IMPROVEMENTS.md` | **改善案メモの正本**。共通ルール・配布の仕組みについて使いながら気づいたことを溜める。`install.sh`がClaude / Codex両方の`skills/init-rules/IMPROVEMENTS.md`からここへsymlinkを張るので、**実行時の追記はそのままgit管理下のこのファイルへ入り、再インストールの`rm -rf`でも消えない**。並びは古い順・末尾追記（他PCのcloneとのmergeが素直になる）。quorumと同じ方式 |
-| `rules/common-rules.md` | **共通ルールの唯一の正本**（2026-09-26〜）。Claude・Codex・PJ書き込みのどれでも読める1枚で、読み手ごとに違う語は`{{名前}}`、片方にだけ要る文は`<!-- if:claude -->…<!-- endif -->`で書く（条件の印は`claude` / `codex` / `global` / `embed`。`,`＝または・`+`＝かつ・`!`＝でない）。中身は§1進行管理 / §2 checkpoint方式・数値上限 / §3進行ルール / §4書き分け / §5 Git / §6 memory不使用 / §7 PJ側の書き分け / §8外部文面でMarkdown不使用 / §9応答の書き方 |
-| `rules/global-rules.md` | **生成物**（`tools/build-rules.py`が正本から作る。直接編集しない）。`~/.claude/CLAUDE.md`のclaude-rulesブロックに注入される |
-| `rules/codex-global-rules.md` | **生成物**。`~/.codex/AGENTS.md`のcodex-rulesブロックへ注入される |
-| `tools/build-rules.py` | 正本から読み手ごとの版を作る。引数なしで生成物2枚を書き直し、`--check`で揃っているかだけを見る、`--variant <版>`で1つの版を標準出力へ。版は`claude-global` / `codex-global` / `embed-claude` / `embed-codex` / `embed-both`。`install.sh`が配る前に呼ぶ |
-| `tools/embed-rules.py` | 共通ルールを**PJのルールファイルへ書き込む**（グローバルを入れない相手へ配る時）。個人の運用をPJごとに選ぶ。使い方は「PJへ共通ルールを書き込む」 |
-| `skills/install-rules/` | **正本**。共通ルールの導入・更新・PJへの書き込みを、選択肢で案内しながら行うスキル。`~/.claude/skills/`と`~/.codex/skills/`へコピーされ、リポの`.claude/skills/`・`.agents/skills/`からもsymlinkで見える（cloneしただけで使える） |
+| `rules/common-rules.md` | **共通ルールの唯一の正本**。読み手ごとに違う語は`{{名前}}`、片方にだけ要る文・選べる個人の運用は`<!-- if:条件 -->…<!-- endif -->`で書く（条件の印は`claude` / `codex`と個人の運用の名前。`,`＝または・`+`＝かつ・`!`＝でない）。中身は§1進行管理 / §2 checkpoint方式・数値上限 / §3進行ルール / §4書き分け / §5 Git / §6 memory不使用 / §7 PJ側の書き分け / §8外部文面でMarkdown不使用 / §9応答の書き方 |
+| `tools/build-rules.py` | 正本から版の本文を作る（`--variant embed-both|embed-claude|embed-codex`、`--options`）。個人の運用の一覧（`OPTIONS`）の正本もここ |
+| `tools/embed-rules.py` | 共通ルールを**PJの`AGENTS.md`へ書き込む**。個人の運用をPJごとに選び、`CLAUDE.md`を`AGENTS.md`へ移して統一し、配下のPJの状態を一覧にする。使い方は「PJへ共通ルールを書き込む」 |
+| `skills/install-rules/` | **正本**。PJへの共通ルールの書き込み・まとめての更新・道具の導入を、選択肢で案内しながら行うスキル。`~/.claude/skills/`と`~/.codex/skills/`へコピーされ、リポの`.claude/skills/`・`.agents/skills/`からもsymlinkで見える（cloneしただけで使える） |
 | `skills/init-rules/` | **正本**。新規/既存PJに4軸 + checkpoint構成を立ち上げるスキル。`~/.claude/skills/init-rules`へコピーされる |
 | `skills/migrate-rules/` | **正本**。既存PJを記録ルールの改訂（2026-09-12〜）に揃えるスキル。checkpointの移動と改名・`REQUIREMENTS.md`の新設と進行中の作業カードの立ち上げ・決定/未決/ADRの振り分け・`NOTES.md`の整理・PJの`CLAUDE.md`の書き直しを、ユーザーの判断を挟みながら何も落とさずに行う。**過去の「次にやること」から落ちた作業を拾う**手順を含む。判断の要らない部分は`tools/migrate-checkpoints.py`・`tools/check-moved-lines.py`・`tools/fix-spacing.py`を呼ぶ（cloneの場所は`init-rules`の`IMPROVEMENTS.md`のsymlinkから辿る）。`~/.claude/skills/migrate-rules`へコピーされる。Codex版は無い |
 | `skills/codex-init-rules/` | Codex版。`~/.codex/skills/init-rules`へコピーされ、PJ固有指示は`AGENTS.md`に生成する |
 | `skills/codex-triage/` | 「トリアージして」等の自然言語で発動するCodex版明示トリアージスキル。**ユーザーが言った時だけ**動く（`AGENTS.md`からの必須発動は2026-09-15に廃止） |
 | `hooks/triage-classifier.sh` | **正本**。UserPromptSubmitフック：プロンプトをhaikuがヘッドレス分類（T0/T1/T2a）し、T0以外のときだけ判定をコンテキスト注入する。quorumトリアージの発動漏れ対策（判断をメインモデルの自己申告から独立させる）。`~/.claude/hooks/`へコピーされ、settings.jsonへの登録は**opt-in**（install.shが案内を表示。+2〜6秒/プロンプト） |
-| `hooks/commit-record-guard.sh` | **正本**。PreToolUse（Bash）フック：commitしようとした時に、`REQUIREMENTS.md` / `PROGRESS.md` / `NOTES.md` / `checkpoints/`のどれかが一緒に変わっているかを見る。1つも無ければ**commitを止めて差し戻す**（グローバル§3「タスク完了時（必須）」の抜けを、私の自己申告から独立して捕まえる）。禁止ではなく意識した判断の強制で、要らない時は理由を述べて`CR_SKIP_RECORD_GUARD=1`を付けて通す（コマンドに残るので後から分かる）。`--amend`・`--dry-run`、記録の方式を使っていないリポ、gitの外、`jq`も`python3`も無い環境は黙って通す（fail-open）。`CLAUDE.md`は数えない（ルールだけを直したcommitも記録は要る）。見るリポは**`git -C <パス>`＞先頭の`cd`＞セッションのカレント**の順に決める（gitの実際の挙動と同じ。`-C`が変数などで解けない時は判定しない）。**判定できるのは「編集は前の呼び出しで済ませ、この呼び出しはcommitだけ」の形に限られる**——`PreToolUse`は実行前に走るので、同じ呼び出しで書いてからcommitする形では書き込みがまだ無い。その形は判定せず「分けて打つ」ことを求める。**ヒアドキュメントは本体だけを落とす**（`<<`から後ろを全部切ると、その後ろのcommitが検出から漏れて素通りする）。**書き込みの検出は引用符の中身を落としてから行う**——`git commit -m "…<noreply@anthropic.com>" && git push`の`m>`と閉じ引用符をリダイレクトと読んで誤検知していた（2026-09-20）。**誤検知そのものより逃げ道が問題**で、止められた側が`-m`をやめて`-F ファイル`へ回った結果、そのcommitは関門を素通りした。止めた時は**コマンド全体が実行されない**ので、差し戻しの文面でそう告げる。**`install.sh`が`~/.claude/settings.json`へ登録するので既定で有効**（控えは`settings.json.bak`。`--no-hook-register`で止められる）。**効いているかは`tools/check-record-guard.sh --repo <リポ>`で、作業するリポごとに確かめる。** このフックは呼ばれるたびに`~/.claude/.record-guard-seen`へ時刻を書くので、**配線が生きているかを手で試さなくても読める**（後追いのフックが「入口が最後に呼ばれたのは何分前か」を添える）。記録の抜けを最後に捕まえるのは`hooks/push-record-guard.sh`で、ここは早く気づくための入口テストは`python3 -m unittest discover -s tools/tests` |
+| `hooks/commit-record-guard.sh` | **正本**。PreToolUse（Bash）フック：commitしようとした時に、`REQUIREMENTS.md` / `PROGRESS.md` / `NOTES.md` / `checkpoints/`のどれかが一緒に変わっているかを見る。1つも無ければ**commitを止めて差し戻す**（共通ルール§3「タスク完了時（必須）」の抜けを、私の自己申告から独立して捕まえる）。禁止ではなく意識した判断の強制で、要らない時は理由を述べて`CR_SKIP_RECORD_GUARD=1`を付けて通す（コマンドに残るので後から分かる）。`--amend`・`--dry-run`、記録の方式を使っていないリポ、gitの外、`jq`も`python3`も無い環境は黙って通す（fail-open）。`CLAUDE.md`は数えない（ルールだけを直したcommitも記録は要る）。見るリポは**`git -C <パス>`＞先頭の`cd`＞セッションのカレント**の順に決める（gitの実際の挙動と同じ。`-C`が変数などで解けない時は判定しない）。**判定できるのは「編集は前の呼び出しで済ませ、この呼び出しはcommitだけ」の形に限られる**——`PreToolUse`は実行前に走るので、同じ呼び出しで書いてからcommitする形では書き込みがまだ無い。その形は判定せず「分けて打つ」ことを求める。**ヒアドキュメントは本体だけを落とす**（`<<`から後ろを全部切ると、その後ろのcommitが検出から漏れて素通りする）。**書き込みの検出は引用符の中身を落としてから行う**——`git commit -m "…<noreply@anthropic.com>" && git push`の`m>`と閉じ引用符をリダイレクトと読んで誤検知していた（2026-09-20）。**誤検知そのものより逃げ道が問題**で、止められた側が`-m`をやめて`-F ファイル`へ回った結果、そのcommitは関門を素通りした。止めた時は**コマンド全体が実行されない**ので、差し戻しの文面でそう告げる。**`install.sh`が`~/.claude/settings.json`へ登録するので既定で有効**（控えは`settings.json.bak`。`--no-hook-register`で止められる）。**効いているかは`tools/check-record-guard.sh --repo <リポ>`で、作業するリポごとに確かめる。** このフックは呼ばれるたびに`~/.claude/.record-guard-seen`へ時刻を書くので、**配線が生きているかを手で試さなくても読める**（後追いのフックが「入口が最後に呼ばれたのは何分前か」を添える）。記録の抜けを最後に捕まえるのは`hooks/push-record-guard.sh`で、ここは早く気づくための入口テストは`python3 -m unittest discover -s tools/tests` |
 | `hooks/push-record-guard.sh` | **正本・記録の関門の本丸**。PreToolUse（Bash）フック：pushしようとした時に、**これから押し出すcommit**（`HEAD --not --remotes`。マージは除く）を1つずつ見て、記録の入っていないものがあれば止める。**commitは既にあるので、コマンドの書き方に一切依存せず正確に判定でき、しかもまだ止められる**——commitの時点は、実行前で書き込みが見えず（入口）／既にできていて止められない（後追い）という、判定の情報が揃わない唯一の時点だった。例外は**コミットメッセージのトレーラ**`記録なし: <理由>`（英語は`No-Record:`）で、コマンドに書く指定と違い**理由が履歴に残って後から数えられる**。押し出す数が既定20件を超える時（作りたてのリポの初回pushなど）・リモートが無い・記録の方式を使っていないリポでは黙る（`CR_PUSH_MAX_COMMITS`で変更可） |
-| `hooks/push-attribution-guard.sh` | **正本**。PreToolUse（Bash）フック：pushしようとした時に、**これから押し出すcommit**のメッセージを1本ずつ見て、AI帰属行（`Co-Authored-By: Claude …` / `🤖 Generated with …` / `noreply@anthropic.com`）が入っていれば止める。グローバル§5.2禁止②を、私の自己申告から独立して担保する——**セッション側から「commitの末尾に付けよ」という指示が渡ることがあり**、規約が勝つ側だが、その判断を私に委ねている限り取りこぼす（2026-09-20に業務リポで実際に押してしまい、共有ブランチのforce pushで手当てした）。**なぜpushの時点か**は記録の関門と同じ——commitの時点はメッセージの渡し方（`-m` / `-F` / エディタ / ヒアドキュメント）に依存して中身が見えないが、pushの直前ならcommitはもう存在するので確実に読め、しかもまだ`--amend`で直せる（未pushなのでforceが要らない）。**署名の形をしたものだけを見る**（本文に「Claude」と書くこと自体は止めない）。**例外はコマンド側の`CR_SKIP_ATTRIBUTION_GUARD=1`だけで、メッセージのトレーラでは抜けられない**——問題にしているのがメッセージそのものなので、そこに例外を置くと堂々巡りになる（記録の関門とはこの点が違う）。記録の関門と違い**リポの作りで対象を絞らない**（規約は全リポに効く）。押し出す数が既定50件超・リモートが無い・gitの外では黙る（fail-open）。テストは`python3 -m unittest discover -s tools/tests` |
+| `hooks/push-attribution-guard.sh` | **正本**。PreToolUse（Bash）フック：pushしようとした時に、**これから押し出すcommit**のメッセージを1本ずつ見て、AI帰属行（`Co-Authored-By: Claude …` / `🤖 Generated with …` / `noreply@anthropic.com`）が入っていれば止める。共通ルール§5.2禁止②を、私の自己申告から独立して担保する——**セッション側から「commitの末尾に付けよ」という指示が渡ることがあり**、規約が勝つ側だが、その判断を私に委ねている限り取りこぼす（2026-09-20に業務リポで実際に押してしまい、共有ブランチのforce pushで手当てした）。**なぜpushの時点か**は記録の関門と同じ——commitの時点はメッセージの渡し方（`-m` / `-F` / エディタ / ヒアドキュメント）に依存して中身が見えないが、pushの直前ならcommitはもう存在するので確実に読め、しかもまだ`--amend`で直せる（未pushなのでforceが要らない）。**署名の形をしたものだけを見る**（本文に「Claude」と書くこと自体は止めない）。**例外はコマンド側の`CR_SKIP_ATTRIBUTION_GUARD=1`だけで、メッセージのトレーラでは抜けられない**——問題にしているのがメッセージそのものなので、そこに例外を置くと堂々巡りになる（記録の関門とはこの点が違う）。記録の関門と違い**リポの作りで対象を絞らない**（規約は全リポに効く）。押し出す数が既定50件超・リモートが無い・gitの外では黙る（fail-open）。テストは`python3 -m unittest discover -s tools/tests` |
 | `hooks/commit-record-audit.sh` | **正本**。PostToolUse（Bash）フック：**できてしまったcommitを後から見る網**。直前の呼び出しでcommitができていたら、`git show --name-only HEAD`を見て記録が入っているかを確かめ、無ければ知らせる。**止められない**（commitは既にある）が、**コマンドの書き方によらずgitの履歴そのものを見る**ので、入口が判定できなかった分の見逃しが残らない。直近120秒以内にできたcommitだけを見る（`CR_AUDIT_FRESH_SECONDS`で変更可）。`install.sh`が`PostToolUse`へ登録する |
 | `tools/check-record-guard.sh` | **正本**。記録の関門が**いま効いているか**を確かめる。①スクリプトの判定が正しいかを使い捨てのリポでその場で見て、②**`--repo`で指した「これから作業するリポ」で発火するか**を試すコマンドを出す。②は`PreToolUse`を通さないと分からないので、出たコマンド（`CR_RECORD_GUARD_PROBE=1 git -C <リポ> commit --dry-run`）をBashツールで実行する。**フックはこの印を見たら状態にかかわらず必ず止める**ので、呼ばれているかだけが分かる。`--dry-run`なので、呼ばれなくても何もコミットされない。**登録は正しいのに、同じセッションの同じ階層でもリポによって発火する／しないが割れる**（条件は未特定）ため、**作業するリポが変わったらそのつど回す**。`~/.claude/tools/`へ配置 |
 | `hooks/triage-rubric.txt` | **分類基準の唯一の正本**。Claudeフック、Codexラッパー、Codex `triage`スキルで共有 |
 | `hooks/codex-triage.sh` | Codexの初回プロンプトを`gpt-5.4-mini`で分類する起動ラッパー。`~/.codex/hooks/codex-triage`へ配置 |
-| `tools/check-limits.sh` | **正本**。常時ロードされるファイルのサイズ上限（グローバル§2）を機械判定する。グローバルCLAUDE.md / AGENTS.mdに加え、**PJのCLAUDE.md 6,144BとPROGRESS.mdの60行かつ12,288Bも見る**。`~/.claude/tools/` `~/.codex/tools/`へコピーされ、`install.sh`末尾と§2の両方から呼ばれる。**各行に残量を出し、残りが`CR_WARN_MARGIN_BYTES`（既定512B）/ `CR_WARN_MARGIN_LINES`（既定5行）を切ったら`△`を付ける**（超過ではないのでexitは0のまま）。上限は`CR_LIMIT_*`環境変数か、PJの`.claude/limits.env`で上書き可（グローバル§2「PJのCLAUDE.mdで上書き可」の機械可読版） |
+| `tools/check-limits.sh` | **正本**。常時ロードされるファイルのサイズ上限（共通ルール§2）を機械判定する。グローバルCLAUDE.md / AGENTS.mdに加え、**PJのCLAUDE.md 6,144BとPROGRESS.mdの60行かつ12,288Bも見る**。`~/.claude/tools/` `~/.codex/tools/`へコピーされ、`install.sh`末尾と§2の両方から呼ばれる。**各行に残量を出し、残りが`CR_WARN_MARGIN_BYTES`（既定512B）/ `CR_WARN_MARGIN_LINES`（既定5行）を切ったら`△`を付ける**（超過ではないのでexitは0のまま）。上限は`CR_LIMIT_*`環境変数か、PJの`.claude/limits.env`で上書き可（共通ルール§2「PJのCLAUDE.mdで上書き可」の機械可読版） |
 | `tools/collect-state.sh` | 複数PC間のズレを採取する。正本のハッシュ・正本と生成物のドリフトdiff・ブロック構成・配置物一覧を1回で出す。**push権限の無いPCで実行して出力を貼る**用途。subtree配下でも動く |
 | `tools/migrate-checkpoints.py` | 既存PJのcheckpointを、リポ直下の`checkpoints/YYYY-MM-DD-作業名-中身.md`の形へ揃える（2026-09-12・2026-09-18の改訂への追従用）。`plan`で対応表の下書き（見出しから名前の候補）を出す→人かClaudeが名前を埋める（作業名は`REQUIREMENTS.md`のカードの見出しと同じ語）→`apply`で`git mv`・見出しの差し替え・リンクの張り直し→`check`で旧パスの残りとリンク切れを検査。**入口は移動元を見て自動で決まる**——`docs/checkpoints/`に日付名があれば「移動と改名」、無くて`checkpoints/`に`YYYY-MM-DD.md`が残っていれば「改名だけ」（置き場だけ先に揃えたPJ向け）。リンク切れの検査はcheckpointへの参照だけでなく、**PJの中の`.md`から張られた相対リンク全部**（移動で行き先がずれた外向きのリンクが見つかる。リポの外を指すものは判断しない）。日付の無い旧ディレクトリへの言及（READMEの表・`.gitignore`のコメントなど）は、Markdown以外も含めて「確かめる」として出す（exitは変えない）。**commitはしない**。名前の決定とADRの仕分けは判断が要るので対象外。**配置はせず**、cloneから`python3 <clone>/tools/migrate-checkpoints.py`で呼ぶ。テストは`python3 -m unittest discover -s tools/tests` |
 | `tools/fix-spacing.py` | 英数字と日本語の間の半角スペース（§9の「境目の空白」）を見つけて落とす。**既定は検査だけ**で、`--write`で直す。行頭のマーカー（見出し・箇条書き・番号・チェックボックス・引用）と、本文の頭の日付・章番号の直後は残し、コードフェンスの中とインラインコードの**中身**は触らない。境目の判定では印（`**`と`` ` ``）を**両側とも透かす**ので、`` `install.sh` を``や`）** へ`のような、grepの文字クラスでは拾えない形も直せる。**直さずに出すだけの「判断が要る候補」が2つ**——記法そのものを列挙している行（コード印が4つ以上並ぶ行。空白が項目の区切り）と、日本語のうしろに`(`で始まる英語の補足が続く形（`次の一手 (Top 3)`）。規則の悪い例を載せている行は`--keep RE`で守る（このリポなら`--keep '悪い例|でなく'`）。日本語同士の空白は§9の対象外なので触らない。**配置はせず**、cloneから`python3 <clone>/tools/fix-spacing.py`で呼ぶ。テストは上と同じ |
@@ -123,24 +125,23 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 
 ### 日付ごとの一回限りの手当て
 
+- **2026-09-26**: **共通ルールをグローバルからPJへ移した**。そのPCで作業するPJを先に`git pull`する（このPCで書き込み済みのPJは、pullだけで`AGENTS.md`に共通ルールが入る）。まだ入っていないPJ（業務・共有リポなど）は、AIに「全PJのルールを最新にして」と頼んで書き込み、commitする（`install-rules`の「複数のPJをまとめて」）。**PJが揃ってから**`./install.sh`を実行する——グローバルの共通ルールのブロックが外れる（控えは`.bak`）。先に道具だけ入れるなら`./install.sh --keep-global-rules`
 - **2026-09-25**: この日の`04128f3`と`397b2d7`の間に`install.sh`を走らせたPCは、`~/.claude/settings.json`の`env`に`CLAUDE_CODE_ENABLE_TODO_TOOLS`が残る（to-doは全体でなくリポ単位へ変えたため）。`jq '.env' ~/.claude/settings.json`で見て、あれば消す。業務のPCでループのひな型を入れたリポは、4の`--update`で上げる（同日に不具合の修正・範囲の検査・昇格の仕組み・歯止めが入った。手で足した上限や起票の決まりは、ひな型側にも入ったので重複を見て整理する）
 - **2026-09-17**: リポを作り直したので、それ以前のcloneは`git pull`が進まない。**cloneを取り直す**（消す前に`IMPROVEMENTS.md`の未pushの追記を確認）
 
-## PJへ共通ルールを書き込む（グローバルを入れない相手へ配る）
+## PJへ共通ルールを書き込む
 
-**入れる時はAIに頼めばよい**——このリポ（またはグローバルを入れたPC）でClaude Code / Codexに「ルールを入れて」「このPJに共通ルールを書き込んで」と言うと、`install-rules`スキルが入れ方・読み手・個人の運用を選択肢で聞いてから下のコマンドを組み立てる。オプションを覚える必要は無い。
+**入れる時はAIに頼めばよい**——Claude Code / Codexに「このPJにルールを入れて」「全PJのルールを最新にして」と言うと、`install-rules`スキルが読み手・個人の運用を選択肢で聞いてから下のコマンドを組み立てる。オプションを覚える必要は無い。
 
-- **個人の運用はPJごとに選ぶ**：commitを指示を待たずに行う（`autocommit`）・pushを自動で行う（`autopush`）・worktreeで作業する（`worktree`）・内部ツール名を書かない（`toolname`）。選ばないと代わりの決まり（「pushはユーザーの指示があった時だけ」等）が入るか、その決まりが無くなる。選択はマーカー行に残り、更新で引き継ぐ。
+- **個人の運用はPJごとに選ぶ**：commitを指示を待たずに行う（`autocommit`）・pushを自動で行う（`autopush`）・worktreeで作業する（`worktree`）・内部ツール名を書かない（`toolname`）。選ばないと代わりの決まり（「pushはユーザーの指示があった時だけ」等）が入るか、その決まりが無くなる。選択はマーカー行に残り、更新で引き継ぐ。自分のPJは全部入り（`all`）。
 - **常に入る（選べない）**：コミットの書き方・memory不使用・AI署名なし・外に出す文面でMarkdownを使わない・応答の書き方。
-- グローバル版には個人の運用が全部入る。
-
-グローバルに入れる（`install.sh`）のが基本。**このリポを入れられない相手・Codexで使う相手へPJ単体で配る時だけ**、共通ルールをPJ側へ重ねて書き込む。
 
 ```bash
 python3 <claude-rules>/tools/embed-rules.py --list-options                     # 選べる個人の運用
-python3 <claude-rules>/tools/embed-rules.py <PJ> --options autopush,worktree   # 初回（選択は必須。none / all も可）
+python3 <claude-rules>/tools/embed-rules.py <PJ> --options all --absorb-claude-md   # 初回（選択は必須。none / all も可）
 python3 <claude-rules>/tools/embed-rules.py <PJ> --target claude --options none # Claudeだけの相手
 python3 <claude-rules>/tools/embed-rules.py <PJ>                  # 2回目以降: 前回の選択と書き込み先のまま最新へ
+python3 <claude-rules>/tools/embed-rules.py --scan ~/Develop      # 配下のPJの状態（最新・古い・未書き込み・CLAUDE.mdが残っている）
 python3 <claude-rules>/tools/embed-rules.py <PJ> --dry-run         # 変わるファイルだけ出す
 python3 <claude-rules>/tools/embed-rules.py <PJ> --check           # 書き込んだ版が最新か（古ければ exit 1）
 python3 <claude-rules>/tools/embed-rules.py <PJ> --remove          # 書き込んだものを取り除く
@@ -148,28 +149,30 @@ python3 <claude-rules>/tools/embed-rules.py <PJ> --remove          # 書き込�
 
 | --target | 書き込む先 | 読まれ方 |
 |---|---|---|
-| `both`（既定） | `AGENTS.md`の先頭に共通ルール。PJのルールは`AGENTS.md`に統一し、`CLAUDE.md`は作らない（既にある時だけ先頭に`@AGENTS.md`） | どちらも`AGENTS.md`を直接読む（Claude Codeはv2.1.277以降） |
+| `both`（既定） | `AGENTS.md`の先頭。`--absorb-claude-md`で`CLAUDE.md`の中身をブロックの下へ移し`CLAUDE.md`を消す（付けなければ`CLAUDE.md`の先頭に`@AGENTS.md`を足して繋ぐだけ） | どちらも`AGENTS.md`を直接読む（Claude Codeはv2.1.277以降） |
 | `claude` | `CLAUDE.md`の先頭 | Claudeだけ |
 | `codex` | `AGENTS.md`の先頭 | Codexだけ |
 
-- 共通ルールはマーカー（`claude-rules:embed:begin` / `end`）で囲み、マーカー行に版（正本のcommit）と種類を刻む。**更新は同じコマンドをもう一度**——マーカー間だけを差し替え、外に書いたPJ固有の指示には触らない。受け取った相手は中を編集せず、PJ固有の指示はブロックの下へ書く。
-- `both`で既存の`CLAUDE.md`にだけ`@AGENTS.md`を足すのは、**PJに`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない**ため（`NOTES.md`「配布の仕組み」）。`CLAUDE.md`にPJ固有の指示が残っているとCodexには届かないので、道具が知らせる（`AGENTS.md`へ移して`CLAUDE.md`を消せば統一が完了する）。
-- 本文は相手のホームにある物を指さない。グローバル版にある記録の関門・AI帰属行の関門・`/init-rules`への言及は外れ、上限の判定は`<PJ>/.claude-rules/check-limits.sh`（道具が一緒に置く）を指す。`check-limits.sh`はマーカー間をグローバルの上限（14,336B）、外をPJの上限（6,144B）で分けて測る。
-- **自分のPC（グローバルも入れてある）で書き込んだPJを開くと、同じルールが二重に読まれる。** 道具と`check-limits.sh`が知らせる。配る用のブランチやコピーで書き込むのが素直。
+- 共通ルールはマーカー（`claude-rules:embed:begin` / `end`）で囲み、マーカー行に版（正本のcommit）と種類と選択を刻む。**更新は同じコマンドをもう一度**——マーカー間だけを差し替え、外に書いたPJ固有の指示には触らない。PJ固有の指示はブロックの下へ書く。
+- `--absorb-claude-md`は、グローバル時代の決まった言い回し（「グローバル`~/.claude/CLAUDE.md`に従う」「共通ルール§5の差分」等）を「共通ルール」を指す語へ置き換え、機械で判断できない行（`CLAUDE.md`・グローバルという語が残る行）を行番号付きで出す。そこはAIが文脈を見て直す。
+- PJに`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない（`NOTES.md`「配布の仕組み」）。統一しないまま残す時は`@AGENTS.md`の行が要る。
+- 本文は相手のホームにある物を指さない。上限の判定は`<PJ>/.claude-rules/check-limits.sh`（道具が一緒に置く）を指し、マーカー間を14,336B、外をPJの上限（6,144B）で分けて測る。
+- このPCに以前のグローバルの共通ルールが残っていると二重に読まれる。道具と`check-limits.sh`が知らせ、`install.sh`で外れる。
 - commitはしない。
 
 ## ルールを変更するとき
 
-**編集するPCはここ（claude-rulesのcloneを持つPC）に限る。** 他PCで気づいた改善は、そのPCの改善メモ（`IMPROVEMENTS.md`等）に書き足すところまでにして、**正本の編集はこのPCで行う**。生成物（`~/.claude/CLAUDE.md`）を直接編集しないのと同じ理由で、正本を複数のPCから触ると版が分岐する。
+**編集するPCはここ（claude-rulesのcloneを持つPC）に限る。** 他PCで気づいた改善は、そのPCの改善メモ（`IMPROVEMENTS.md`等）に書き足すところまでにして、**正本の編集はこのPCで行う**。PJの`AGENTS.md`の共通ルールのブロックを直接編集しないのと同じ理由で、正本を複数のPCから触ると版が分岐する。
 
 **改善メモ（`IMPROVEMENTS.md`）はどのPCから書いてよい。** 正本はリポrootの`IMPROVEMENTS.md`（git管理）で、`install.sh`がClaude / Codex両方の配置先からsymlinkを張る（`~/.claude/skills/init-rules/IMPROVEMENTS.md`）。**リポを移動したら再installする**——symlinkは絶対パスを焼き込むので、移動すると全PCのリンクが同時に切れ、追記が正本へ届かないまま黙って落ちる（`install.sh`は張り直し前にリンク切れを警告し、張り直し後に解決を検証する）。
 
 配布先へ**取り込まれた複製**（他リポの`bundled/`配下など）で`install.sh`を走らせると、`rules/*.md`がpull専用である旨をstderrに出す（`rules/`に未コミットの変更があればさらに強く警告する）。止めはしないので、出たら編集をやめて改善メモへ回す。
 
-1.**このリポの`rules/common-rules.md`（または`skills/init-rules/SKILL.md`）を編集する**。`~/.claude/CLAUDE.md`のブロック内も、生成物の`rules/global-rules.md` / `rules/codex-global-rules.md`も直接編集しない（次回の生成・installで消える）
-2. `./install.sh`でローカルに反映（最初に`tools/build-rules.py`が生成物2枚を作り直す）
-3. 生成物ごとcommit / push。PJへ書き込んで配った先があれば、`tools/embed-rules.py <PJ>`をもう一度
-4. 他のPCでは`git pull && ./install.sh`
+1.**このリポの`rules/common-rules.md`（またはスキル）を編集する**。PJの`AGENTS.md`のブロック内は直接編集しない（次の書き込みで消える）
+2. `python3 -m unittest discover -s tools/tests`（版ごとの中身と上限を見る）
+3. commit / push
+4. PJへ反映する：`python3 tools/embed-rules.py --scan ~/Develop`で「古い」PJを出し、それぞれ`python3 tools/embed-rules.py <PJ>`（前回の選択のまま）。PJごとにcommit / push。AIに「全PJのルールを最新にして」と頼めば同じことをする
+5. 他のPCでは`git pull && ./install.sh`（道具）と、各PJの`git pull`（共通ルール）
 
 ## 経緯
 

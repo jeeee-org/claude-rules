@@ -6,6 +6,8 @@
     python3 <claude-rules>/tools/embed-rules.py <PJ>             # 2回目以降: 前回の選択と書き込み先のまま最新へ
     python3 <claude-rules>/tools/embed-rules.py <PJ> --check     # 書き込み済みの版が最新か（古ければ exit 1）
     python3 <claude-rules>/tools/embed-rules.py <PJ> --remove    # 書き込んだものを取り除く
+    python3 <claude-rules>/tools/embed-rules.py <PJ> --options all --absorb-claude-md  # CLAUDE.mdをAGENTS.mdへ移して統一
+    python3 <claude-rules>/tools/embed-rules.py --scan ~/Develop  # 配下のPJの状態の一覧（未書き込み・古い・最新）
 
 導入はAIが案内する前提（スキル install-rules）。オプションを覚えておく必要は無い。
 
@@ -23,7 +25,10 @@
 - 共通ルールはマーカー（claude-rules:embed:begin / end）で囲む。2回目以降はマーカー間だけを差し替え、
   外に書かれたPJ固有の指示には触らない。マーカー行に版（正本のcommit）と種類と選んだ運用を刻む
 - 上限の判定に使う check-limits.sh を <PJ>/.claude-rules/ へ置く（本文がこの場所を指す）
-- このPCにグローバルの共通ルールも入っていれば、二重に読まれることを知らせる（止めはしない）
+- --absorb-claude-md（both のみ）: CLAUDE.md のPJ固有の指示を AGENTS.md のブロックの下へ移し、CLAUDE.md を消す。
+  グローバル時代の決まった言い回し（「グローバル`~/.claude/CLAUDE.md`に従う」「グローバル§5」等）は
+  共通ルールを指す語へ置き換え、機械で判断できない残り（CLAUDE.md・グローバルという語）を行番号付きで出す
+- このPCに以前のグローバルの共通ルールが残っていれば、二重に読まれることを知らせる（止めはしない）
 - commitはしない
 """
 from __future__ import annotations
@@ -86,16 +91,43 @@ def stored(pj: Path) -> tuple[str, set[str]] | None:
     return None
 
 
-def parse_options(text: str) -> set[str]:
-    if text == 'none':
-        return set()
-    if text == 'all':
-        return set(build_rules.OPTIONS)
-    chosen = {t.strip() for t in text.split(',') if t.strip()}
-    unknown = chosen - set(build_rules.OPTIONS)
-    if unknown:
-        raise ValueError(f'知らない個人の運用: {", ".join(sorted(unknown))}（--list-options で一覧）')
-    return chosen
+parse_options = build_rules.parse_options
+
+# グローバル時代にPJのCLAUDE.mdへ書かれた決まった言い回し → 共通ルールがPJ内にある前提の語
+_REWRITES = [
+    (re.compile(r'グローバル\s*`~/\.claude/CLAUDE\.md`\s*に従う'), 'このファイル先頭の共通ルールに従う'),
+    (re.compile(r'グローバル設定（`~/\.claude/CLAUDE\.md`）'), '共通ルール（このファイル先頭）'),
+    (re.compile(r'グローバル\s*`~/\.claude/CLAUDE\.md`'), '共通ルール（このファイル先頭）'),
+    (re.compile(r'グローバル\s*§'), '共通ルール§'),
+    (re.compile(r'グローバル既定'), '共通ルールの既定'),
+    (re.compile(r'グローバルの5点'), '共通ルールの5点'),
+    (re.compile(r'\A# CLAUDE\.md'), '# AGENTS.md'),
+    (re.compile(r'`CLAUDE\.md`（このファイル）'), '`AGENTS.md`（このファイル）'),
+    (re.compile(r'このファイル（`CLAUDE\.md`）'), 'このファイル（`AGENTS.md`）'),
+    (re.compile(r'PJ CLAUDE\.md'), 'PJ AGENTS.md'),
+    (re.compile(r'Claude Codeへのプロジェクト指示'), 'Claude Code / Codexへのプロジェクト指示'),
+    (re.compile(r'このCLAUDE\.md'), 'このAGENTS.md'),
+]
+_LEFTOVER = re.compile(r'CLAUDE\.md|グローバル(?!ホットキー)')
+
+
+def rewrite_refs(text: str) -> str:
+    for pat, rep in _REWRITES:
+        text = pat.sub(rep, text)
+    return text
+
+
+def leftovers(text: str) -> list[str]:
+    """機械で置き換えられなかった、判断の要る行（ファイルの行番号付き。共通ルールのブロックの中は見ない）。"""
+    out, inside = [], False
+    for i, line in enumerate(text.splitlines(), 1):
+        if BEGIN in line:
+            inside = True
+        elif END in line:
+            inside = False
+        elif not inside and _LEFTOVER.search(line.replace('CLAUDE.local.md', '')):
+            out.append(f'{i}: {line}')
+    return out
 
 
 def list_options() -> str:
@@ -127,17 +159,48 @@ def drop_import(text: str) -> str:
     return _IMPORT_RE.sub('', text, count=1).lstrip('\n')
 
 
-def plan(pj: Path, target: str, version: str, options: set[str]) -> dict[Path, str | None]:
+def plan(pj: Path, target: str, version: str, options: set[str], absorb: bool = False) -> dict[Path, str | None]:
     """書き込み後の中身を {パス: 中身} で返す（None は削除）。"""
     variant = f'embed-{target}'
     rules_file = pj / ('CLAUDE.md' if target == 'claude' else 'AGENTS.md')
     out: dict[Path, str | None] = {}
     cur = rules_file.read_text(encoding='utf-8') if rules_file.exists() else ''
-    out[rules_file] = put_block(cur, block_text(variant, version, options))
     cm = pj / 'CLAUDE.md'
+    if absorb and target == 'both' and cm.exists():
+        # PJ固有の指示（元のCLAUDE.md）をブロックのすぐ下へ、元からのAGENTS.mdの中身はその後ろへ
+        own = drop_import(drop_block(cm.read_text(encoding='utf-8')))
+        own = re.sub(r'^@AGENTS\.md[ \t]*\n?', '', own, flags=re.M).strip('\n')
+        rest = drop_block(cur).strip('\n')
+        body = '\n\n'.join(x for x in (rewrite_refs(own), rest) if x)
+        out[rules_file] = put_block(body + '\n' if body else '', block_text(variant, version, options))
+        out[cm] = None
+        return out
+    out[rules_file] = put_block(cur, block_text(variant, version, options))
     if target == 'both' and cm.exists():
         out[cm] = put_import(cm.read_text(encoding='utf-8'))
     return out
+
+
+def scan(root: Path) -> str:
+    """root 直下のPJごとに、共通ルールの状態を1行で返す。"""
+    rows = []
+    for pj in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith('.')):
+        if not ((pj / '.git').exists() or (pj / 'AGENTS.md').exists() or (pj / 'CLAUDE.md').exists()):
+            continue
+        prev = stored(pj)
+        cm = (pj / 'CLAUDE.md').exists()
+        if prev is None:
+            state = '未書き込み' + ('（CLAUDE.mdあり）' if cm else '')
+        else:
+            f = pj / ('CLAUDE.md' if prev[0] == 'claude' else 'AGENTS.md')
+            want = put_block(f.read_text(encoding='utf-8'),
+                             block_text(f'embed-{prev[0]}', source_version(), prev[1]))
+            fresh = _VERSION_RE.sub(r'\1', want) == _VERSION_RE.sub(r'\1', f.read_text(encoding='utf-8'))
+            chosen = ','.join(o for o in build_rules.OPTIONS if o in prev[1]) or 'なし'
+            state = f'{"最新" if fresh else "古い"}（{prev[0]} / 選択 {chosen}）' + \
+                    ('・CLAUDE.mdあり' if cm and prev[0] == 'both' else '')
+        rows.append(f'  {pj.name:<32} {state}')
+    return '\n'.join(rows) + '\n'
 
 
 def plan_remove(pj: Path) -> dict[Path, str | None]:
@@ -157,10 +220,10 @@ def warnings(pj: Path, target: str) -> list[str]:
     msgs = []
     cc = Path(os.environ.get('CLAUDE_CONFIG_DIR', Path.home() / '.claude')) / 'CLAUDE.md'
     cx = Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')) / 'AGENTS.md'
-    if target in ('both', 'claude') and cc.exists() and 'claude-rules:begin' in cc.read_text(encoding='utf-8'):
-        msgs.append(f'このPCの{cc}にも共通ルールがあります。このPJをこのPCのClaudeで開くと二重に読まれます')
-    if target in ('both', 'codex') and cx.exists() and 'codex-rules:begin' in cx.read_text(encoding='utf-8'):
-        msgs.append(f'このPCの{cx}にも共通ルールがあります。このPJをこのPCのCodexで開くと二重に読まれます')
+    for home, marker in ((cc, 'claude-rules:begin'), (cx, 'codex-rules:begin')):
+        if home.exists() and marker in home.read_text(encoding='utf-8'):
+            msgs.append(f'このPCの{home}に以前のグローバルの共通ルールが残っていて、二重に読まれます。'
+                        'claude-rulesのinstall.shを実行すると外れます')
     cm, am = pj / 'CLAUDE.md', pj / 'AGENTS.md'
     if target == 'both' and cm.exists():
         rest = drop_import(drop_block(cm.read_text(encoding='utf-8'))).strip()
@@ -184,10 +247,15 @@ def main(argv=None) -> int:
     ap.add_argument('--dry-run', action='store_true', help='書き換えずに、変わるファイルだけ出す')
     ap.add_argument('--check', action='store_true', help='書き込み済みの版が最新か見る（古ければ exit 1）')
     ap.add_argument('--remove', action='store_true', help='書き込んだブロックと読み込みの行・.claude-rules/を取り除く')
+    ap.add_argument('--absorb-claude-md', action='store_true', help='CLAUDE.mdをAGENTS.mdへ移して統一する（bothのみ）')
+    ap.add_argument('--scan', type=Path, metavar='DIR', help='DIR直下のPJの状態の一覧')
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # 警告（stderr）と並びを揃える
     if args.list_options:
         sys.stdout.write(list_options())
+        return 0
+    if args.scan:
+        sys.stdout.write(scan(args.scan.expanduser().resolve()))
         return 0
     if args.pj is None:
         ap.error('PJのルートを指定してください')
@@ -217,7 +285,10 @@ def main(argv=None) -> int:
             sys.stderr.write(list_options())
             return 2
         args.target = target
-        changes = plan(pj, target, source_version(), options)
+        if args.absorb_claude_md and target != 'both':
+            print('✗ --absorb-claude-md は --target both の時だけ使えます', file=sys.stderr)
+            return 2
+        changes = plan(pj, target, source_version(), options, absorb=args.absorb_claude_md)
 
     diff = []
     for f, new in changes.items():
@@ -265,6 +336,14 @@ def main(argv=None) -> int:
     if not args.remove:
         for m in warnings(pj, args.target):
             print(f'※ {m}', file=sys.stderr)
+    if args.absorb_claude_md:
+        am = pj / 'AGENTS.md'
+        text = changes.get(am) or ''
+        left = leftovers(text)
+        if left:
+            print('※ 機械で置き換えなかった行（AGENTS.mdの行番号）。文脈を見て直す:', file=sys.stderr)
+            for line in left:
+                print(f'    {line}', file=sys.stderr)
     return 0
 
 

@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
-"""共通ルールの正本（rules/common-rules.md）から、読み手ごとの版を作る。
+"""共通ルールの正本（rules/common-rules.md）から、PJへ書き込む版の本文を作る。
 
-    python3 tools/build-rules.py            # rules/global-rules.md と rules/codex-global-rules.md を書き直す
-    python3 tools/build-rules.py --check    # 生成物が正本と揃っているかだけ見る（揃っていなければ exit 1）
-    python3 tools/build-rules.py --variant embed-both   # 1つの版の本文を標準出力へ
+    python3 tools/build-rules.py --variant embed-both [--options autopush,worktree|none|all]   # 本文を標準出力へ
 
-版は5つ。読み手（claude / codex）と置き場（global / embed）の組み合わせ:
-  claude-global  ~/.claude/CLAUDE.md へ install.sh が注入する
-  codex-global   ~/.codex/AGENTS.md へ install.sh が注入する
-  embed-claude   PJの CLAUDE.md へ tools/embed-rules.py が書き込む（Claudeだけの相手）
-  embed-codex    PJの AGENTS.md へ書き込む（Codexだけの相手）
-  embed-both     PJの AGENTS.md へ書き込み、CLAUDE.md から @AGENTS.md で読ませる
+書き込み自体は tools/embed-rules.py が行う（ここは本文を作るだけ）。2026-09-26にグローバルへの
+注入をやめたので、版はPJへ書き込むものだけ:
+  embed-claude   PJの CLAUDE.md へ書く（Claudeだけの相手）
+  embed-codex    PJの AGENTS.md へ書く（Codexだけの相手）
+  embed-both     PJの AGENTS.md へ書く（既定。PJのルールを AGENTS.md に統一する）
 
 正本の書き方:
   {{名前}}                                  版ごとの語（VARIANTS の vars）に置き換わる
   <!-- if:条件 -->…<!-- endif -->            条件が立つ版にだけ残る。行の途中にも置ける
                                             （入れ子は「行単位のブロックの中に行中の条件」だけ可）
   条件は印で書く。`,` = または、`+` = かつ、`!` = でない
-    読み手と置き場: claude / codex / global / embed
-    個人の運用（OPTIONS）: グローバル版では全部立つ。PJ書き込み版では入れる時に選んだものだけ立つ
-  例 if:claude+global（Claudeのグローバルだけ）、if:!embed、if:!autopush
+    読み手: claude / codex（embed-both では両方立つ）
+    個人の運用（OPTIONS）: 入れる時にPJごとに選んだものだけ立つ
+  例 if:claude+codex（両方向けだけ）、if:!autopush
 """
 from __future__ import annotations
 
@@ -33,42 +30,29 @@ SOURCE = ROOT / 'rules' / 'common-rules.md'
 
 _CLAUDE_SKILL = '`.claude/skills/<name>/SKILL.md`'
 _CODEX_SKILL = '`.agents/skills/<name>/SKILL.md`'
-_EMBED_CHECK = '`.claude-rules/check-limits.sh`'
 
 VARIANTS = {
-    'claude-global': {
-        'flags': {'claude', 'global'},
-        'vars': {'PJ': 'CLAUDE.md', 'LIMIT_COMMON': 'グローバルCLAUDE.md', 'LIMIT_PJ': 'PJ CLAUDE.md',
-                 'CHECK_LIMITS': '~/.claude/tools/check-limits.sh', 'START_SCOPE': 'グローバル＋PJ',
-                 'SKILL_PATH': _CLAUDE_SKILL, 'INIT': '/init-rules'},
-    },
-    'codex-global': {
-        'flags': {'codex', 'global'},
-        'vars': {'PJ': 'AGENTS.md', 'LIMIT_COMMON': 'グローバルAGENTS.md', 'LIMIT_PJ': 'PJ AGENTS.md',
-                 'CHECK_LIMITS': '~/.codex/tools/check-limits.sh', 'START_SCOPE': 'グローバル＋PJ',
-                 'SKILL_PATH': _CODEX_SKILL, 'INIT': '$init-rules'},
-    },
     'embed-claude': {
-        'flags': {'claude', 'embed'},
+        'flags': {'claude'},
         'vars': {'PJ': 'CLAUDE.md', 'LIMIT_COMMON': '共通ルールのブロック', 'LIMIT_PJ': 'PJ CLAUDE.md（ブロックの外）',
                  'CHECK_LIMITS': '.claude-rules/check-limits.sh', 'START_SCOPE': '共通ルール＋PJ固有',
                  'SKILL_PATH': _CLAUDE_SKILL},
     },
     'embed-codex': {
-        'flags': {'codex', 'embed'},
+        'flags': {'codex'},
         'vars': {'PJ': 'AGENTS.md', 'LIMIT_COMMON': '共通ルールのブロック', 'LIMIT_PJ': 'PJ AGENTS.md（ブロックの外）',
                  'CHECK_LIMITS': '.claude-rules/check-limits.sh', 'START_SCOPE': '共通ルール＋PJ固有',
                  'SKILL_PATH': _CODEX_SKILL},
     },
     'embed-both': {
-        'flags': {'claude', 'codex', 'embed'},
+        'flags': {'claude', 'codex'},
         'vars': {'PJ': 'AGENTS.md', 'LIMIT_COMMON': '共通ルールのブロック', 'LIMIT_PJ': 'PJ AGENTS.md（ブロックの外）',
                  'CHECK_LIMITS': '.claude-rules/check-limits.sh', 'START_SCOPE': '共通ルール＋PJ固有',
                  'SKILL_PATH': _CLAUDE_SKILL + '（Codexは`.agents/skills/`）'},
     },
 }
 
-# 個人の運用。PJへ書き込む時にPJごとに選ぶ（グローバル版は全部入り）。
+# 個人の運用。PJへ書き込む時にPJごとに選ぶ。
 # 選ばなかった時は、正本の <!-- if:!名前 --> の文（代わりの決まり）が入るか、その決まりが無くなる。
 # コミットの書き方・memory不使用・AI署名なし・§8・§9はここに入れない（全版で必須）
 OPTIONS = {
@@ -76,12 +60,6 @@ OPTIONS = {
     'autopush': ('pushを事前承認なしで自動で行う', '§5。選ばないと「pushはユーザーの指示があった時だけ」'),
     'worktree': ('業務・共有リポではworktreeで作業する', '§5.1。選ばないと§5.1ごと無くなる'),
     'toolname': ('コミット・PRに内部ツール名を作業の手段として書かない', '§5.2の禁止①。選ばないと無くなる'),
-}
-
-# install.sh が注入に使う生成物。マーカー名は既存の ~/.claude/CLAUDE.md・~/.codex/AGENTS.md と揃える
-GLOBAL_OUTPUTS = {
-    'claude-global': (ROOT / 'rules' / 'global-rules.md', 'claude-rules'),
-    'codex-global': (ROOT / 'rules' / 'codex-global-rules.md', 'codex-rules'),
 }
 
 _BLOCK = re.compile(r'^<!-- if:(\S+) -->\n(.*?)^<!-- endif -->\n', re.M | re.S)
@@ -95,12 +73,22 @@ def holds(cond: str, flags: set[str]) -> bool:
     return any(all(atom(a) for a in term.split('+')) for term in cond.split(','))
 
 
+def parse_options(text: str) -> set[str]:
+    if text == 'none':
+        return set()
+    if text == 'all':
+        return set(OPTIONS)
+    chosen = {t.strip() for t in text.split(',') if t.strip()}
+    unknown = chosen - set(OPTIONS)
+    if unknown:
+        raise ValueError(f'知らない個人の運用: {", ".join(sorted(unknown))}（--list-options で一覧）')
+    return chosen
+
+
 def render(variant: str, source: str | None = None, options: set[str] | None = None) -> str:
-    """版の本文（マーカー行を除く）を返す。options はPJ書き込み版で選んだ個人の運用（グローバル版は全部）。"""
+    """版の本文（マーカー行を除く）を返す。options はPJごとに選んだ個人の運用。"""
     spec = VARIANTS[variant]
     text = SOURCE.read_text(encoding='utf-8') if source is None else source
-    if 'global' in spec['flags']:
-        options = set(OPTIONS)
     unknown = set(options or ()) - set(OPTIONS)
     if unknown:
         raise KeyError(f'知らない個人の運用: {", ".join(sorted(unknown))}')
@@ -121,37 +109,12 @@ def render(variant: str, source: str | None = None, options: set[str] | None = N
     return text + '\n'
 
 
-def global_file(variant: str) -> str:
-    path, marker = GLOBAL_OUTPUTS[variant]
-    head = (f'<!-- {marker}:begin (claude-rules/install.shが管理。手動編集しない'
-            ' — 変更はリポのrules/common-rules.mdへ) -->\n')
-    return head + render(variant) + f'\n<!-- {marker}:end -->\n'
-
-
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--check', action='store_true', help='生成物が正本と揃っているかだけ見る')
-    ap.add_argument('--variant', choices=sorted(VARIANTS), help='1つの版の本文を標準出力へ')
+    ap.add_argument('--variant', choices=sorted(VARIANTS), required=True)
+    ap.add_argument('--options', default='all', help='個人の運用（カンマ区切り / none / all。既定 all）')
     args = ap.parse_args(argv)
-
-    if args.variant:
-        sys.stdout.write(render(args.variant))
-        return 0
-    stale = []
-    for variant, (path, _) in GLOBAL_OUTPUTS.items():
-        want = global_file(variant)
-        have = path.read_text(encoding='utf-8') if path.exists() else None
-        if have == want:
-            continue
-        stale.append(path.relative_to(ROOT))
-        if not args.check:
-            path.write_text(want, encoding='utf-8')
-    if args.check:
-        for p in stale:
-            print(f'✗ {p} が正本（rules/common-rules.md）と揃っていません。tools/build-rules.py を実行してください', file=sys.stderr)
-        return 1 if stale else 0
-    for p in stale:
-        print(f'  - {p} を正本から作り直しました（commitに含めてください）')
+    sys.stdout.write(render(args.variant, options=parse_options(args.options)))
     return 0
 
 

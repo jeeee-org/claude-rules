@@ -1,22 +1,22 @@
 ---
 name: init-rules
-description: 現在のプロジェクトに共通の進行管理構成（4軸 + checkpoint + Git/メモ規約）を立ち上げる。グローバル~/.claude/CLAUDE.mdのルールに沿って、CLAUDE.md / REQUIREMENTS.md / PROGRESS.md / NOTES.md / checkpoints/の雛形を生成する。新規PJの初期化や、既存PJをこの方式に揃えたい時に使う。
+description: 現在のプロジェクトに共通の進行管理構成（4軸 + checkpoint + Git/メモ規約）を立ち上げる。共通ルールをPJのAGENTS.mdへ書き込み、AGENTS.md（PJ固有の指示）/ REQUIREMENTS.md / PROGRESS.md / NOTES.md / checkpoints/の雛形を生成する。新規PJの初期化や、既存PJをこの方式に揃えたい時に使う。
 ---
 
 # init-rules — プロジェクト構成の立ち上げ
 
-グローバル`~/.claude/CLAUDE.md`で定義した共通骨格（4軸 + checkpoint, 進行ルール, Git, memory不使用）に沿って、対象プロジェクトに必須ファイルの雛形を作る。**既存ファイルは絶対に上書きしない**（無いものだけ作る）。
+claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory不使用）をPJの`AGENTS.md`の先頭へ書き込み、その下にPJ固有の指示を置き、記録ファイルの雛形を作る。**既存ファイルは絶対に上書きしない**（無いものだけ作る）。共通ルールはグローバルに置かない（2026-09-26〜）。PJのルールファイルは`AGENTS.md`に統一し、`CLAUDE.md`は作らない。
 
 ## 手順
 
 ### 1. 現状確認
 - `git rev-parse --show-toplevel`でリポジトリルートを確認。
-- 既存の`CLAUDE.md` / `REQUIREMENTS.md` / `PROGRESS.md` / `NOTES.md` / `checkpoints/`の有無を確認。**既にあるものは触らない**。何が在って何を作るかをユーザーに伝える。
+- 既存の`AGENTS.md` / `CLAUDE.md` / `REQUIREMENTS.md` / `PROGRESS.md` / `NOTES.md` / `checkpoints/`の有無を確認。**既にあるものは触らない**。何が在って何を作るかをユーザーに伝える。`CLAUDE.md`が既にあるPJは、このスキルでなく`install-rules`で共通ルールを入れて`AGENTS.md`へ統一する（移す判断が要るため）。
 
 ### 2. PJの性質を確認（雛形の文言が変わる）
 ユーザーに簡潔に確認する（不明なら聞く、明らかなら推測して進めてよい）：
 - **PJの種類**：①コード/プロダクト開発 か ②調査・ドキュメント中心 か（REQUIREMENTSの役割が「機能仕様」か「調査スコープ」かに効く）。
-- **Git**：`main`直pushかfeatureブランチか／**pushを止めるか**（グローバル§5の既定は「リモートがあれば1作業ごとに自動push」。止めたい時だけ「pushはユーザー指示時のみ」を明示）。
+- **Git**：`main`直pushかfeatureブランチか／**pushを止めるか**（手順3で選ぶ個人の運用の「自動push」に対応。選ばないと「pushはユーザーの指示があった時だけ」）。
 - **コミット規約**：Conventional Commitsか、日本語要約1行か。
 
 ### 2.5 Gitブートストラップ（リポジトリが無い時だけ）
@@ -31,14 +31,16 @@ description: 現在のプロジェクトに共通の進行管理構成（4軸 + 
    - 公開したくなった時は別途`gh repo edit <owner>/<name> --visibility public`（公開は不可逆的影響があるので必ず確認の上で）。
 4. この時点ではpushしない（初回pushは§4で、雛形コミット後に方針に従って行う）。
 
-### 3. 雛形を生成（無いものだけ）
+### 3. 共通ルールを書き込み、雛形を生成（無いものだけ）
 
-**`CLAUDE.md`（プロジェクト用スタブ）** — グローバルを継承し、固有差分だけ書く：
+**共通ルール** — `install-rules`スキルの「1つのPJ」の手順で、読み手（既定は両方）と個人の運用を選んでもらい、`tools/embed-rules.py`で`AGENTS.md`の先頭へ書き込む。cloneの場所は`dirname "$(readlink -e ~/.claude/skills/init-rules/IMPROVEMENTS.md)"`。
+
+**`AGENTS.md`のPJ固有の部分**（共通ルールのブロックの下へ足す）— 固有差分だけ書く：
 ```markdown
-# CLAUDE.md — <プロジェクト名>
+# AGENTS.md — <プロジェクト名>
 
-このファイルはClaude Codeへのプロジェクト指示書。**会話開始時に必ず読む。**
-共通の進行管理・Git・記録ルールはグローバル`~/.claude/CLAUDE.md`に従う。
+このファイルはClaude Code / Codexへのプロジェクト指示書。**会話開始時に必ず読む。**
+共通の進行管理・Git・記録ルールはこのファイル先頭の共通ルールに従う。
 ここには**このPJ固有のことだけ**を書く。
 
 ## このプロジェクト固有の前提
@@ -48,14 +50,14 @@ description: 現在のプロジェクトに共通の進行管理構成（4軸 + 
 
 ## REQUIREMENTS.mdの性質
 - <「機能仕様・ルールサブセット」or「調査スコープ・対象バックログ」>
-- **要求の面の形**（グローバル§4）= <「追加要求: <題>」節を横に並べる（窓口型・依頼が次々来る）or「要件」の表を上から順に叶える（終わりのある案件）>
+- **要求の面の形**（共通ルール§4）= <「追加要求: <題>」節を横に並べる（窓口型・依頼が次々来る）or「要件」の表を上から順に叶える（終わりのある案件）>
 - <`notes/`等の独自慣習があればここに>
 
-## Git運用（グローバル§5の差分）
+## Git運用（共通ルール§5の差分）
 - リモート: `<url>`（**private/public**）
 - デフォルトブランチ: `main`（<featureブランチを作る/作らない>）
 - コミット規約: <Conventional Commits / 日本語要約1行>
-- push方針: <「グローバル§5の既定どおり1作業ごとにcommit + 自動push」or「pushはユーザー指示時のみ（オプトアウト）」>
+- push方針: <「共通ルール§5どおり1作業ごとにcommit + 自動push」or「pushはユーザー指示時のみ」>（共通ルールで選んだ個人の運用と食い違わせない）
 
 ## その他固有ルール
 - 技術スタック / スキル化方針 / ドキュメント規約 など（あれば）
@@ -86,7 +88,7 @@ description: 現在のプロジェクトに共通の進行管理構成（4軸 + 
 - **待ち** =
 - **作業ログ** = `checkpoints/*-<作業名>-*`（N件）
 
-## 要求（カードに収まらない中身。**PJの`CLAUDE.md`で宣言した片方だけ**を使い、両方は置かない）
+## 要求（カードに収まらない中身。**PJの`AGENTS.md`で宣言した片方だけ**を使い、両方は置かない）
 
 <形A・窓口型——依頼が来るたび節を足す。終わったら節ごと消す>
 
@@ -155,7 +157,7 @@ description: 現在のプロジェクトに共通の進行管理構成（4軸 + 
 ```markdown
 # <YYYY-MM-DD> 初期構成の立ち上げ（/init-rules）
 
-- グローバル`~/.claude/CLAUDE.md`の共通骨格に沿って4軸 + checkpointを作成。
+- 共通ルールを`AGENTS.md`へ書き込み、4軸 + checkpointを作成。
 - PJ種別: <①開発 / ②調査>。Git: <方針>。
 ```
 
@@ -163,12 +165,12 @@ description: 現在のプロジェクトに共通の進行管理構成（4軸 + 
 
 ### 4. 確認とコミット
 - 生成したファイル一覧をユーザーに見せる。
-- Gitルール（グローバル§5）に従ってコミット（雛形＋`.gitignore`等があれば一緒に）。**リモートがあればpushまで自動**。PJ側に「pushはユーザー指示時のみ」の明示がある時だけ止める。
+- Gitルール（共通ルール§5）に従ってコミット（雛形＋`.gitignore`等があれば一緒に）。**リモートがあればpushまで自動**。PJ側に「pushはユーザー指示時のみ」の明示がある時だけ止める。
 - §2.5で新規作成したリポは、初回push（`git push -u origin main`）でorigin/mainを確立する。これもpush方針に従う（既定は自動、オプトアウト宣言があれば確認）。
 
 ## 改善案の記録（運用ルール）
 
-グローバル共通ルールや配布の仕組み（`install.sh` / `check-limits.sh`）について**使っていて気づいたこと**は、claude-rulesの`IMPROVEMENTS.md`に書く。配置先は`~/.claude/skills/init-rules/IMPROVEMENTS.md`で、リポrootの正本へのsymlink（追記はそのままgit管理下へ入り、再インストールでも消えない）。
+共通ルールや配布の仕組み（`embed-rules.py` / `install.sh` / `check-limits.sh`）について**使っていて気づいたこと**は、claude-rulesの`IMPROVEMENTS.md`に書く。配置先は`~/.claude/skills/init-rules/IMPROVEMENTS.md`で、リポrootの正本へのsymlink（追記はそのままgit管理下へ入り、再インストールでも消えない）。
 
 - **書く前に`readlink -e ~/.claude/skills/init-rules/IMPROVEMENTS.md`で健全性を1回確認する。** 切れていたら追記せず、claude-rulesの`install.sh`を再実行してから書く（リポを移動すると全PCのリンクが同時に切れ、追記が黙って落ちる）。
 - 1件 = 日付＋状況＋気づき＋できれば改善案。**末尾へ追記**（古い順。先頭へ差し込むと他PCのcloneと全項目conflictする）。

@@ -99,6 +99,51 @@ class EmbedTest(unittest.TestCase):
         self.assertIn('AGENTS.md', p.stdout)
         self.assertEqual(sorted(x.name for x in self.pj.iterdir()), [])
 
+    def test_CLAUDEをAGENTSへ移して統一する(self):
+        (self.pj / 'CLAUDE.md').write_text(
+            '# CLAUDE.md — demo\n\nこのファイルはClaude Codeへのプロジェクト指示書。\n'
+            '共通の進行管理・Git・記録ルールはグローバル`~/.claude/CLAUDE.md`に従う。\n\n'
+            '## Git運用（グローバル§5の差分）\n- 上限はグローバル既定どおり（PJ CLAUDE.md 6KB）\n'
+            '- グローバルホットキーは使わない\n- CLAUDE.local.mdは個人用\n- CLAUDE.mdを読む前に何かする\n',
+            encoding='utf-8')
+        (self.pj / 'AGENTS.md').write_text('<!-- BEGIN:x -->\n既存\n<!-- END:x -->\n', encoding='utf-8')
+        p = self.run_tool('--options', 'all', '--absorb-claude-md')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse((self.pj / 'CLAUDE.md').exists())
+        text = self.read('AGENTS.md')
+        own = text[text.index('claude-rules:embed:end'):]
+        self.assertIn('# AGENTS.md — demo', own)
+        self.assertIn('Claude Code / Codexへのプロジェクト指示書', own)
+        self.assertIn('このファイル先頭の共通ルールに従う', own)
+        self.assertIn('## Git運用（共通ルール§5の差分）', own)
+        self.assertIn('共通ルールの既定どおり（PJ AGENTS.md 6KB）', own)
+        self.assertIn('グローバルホットキー', own)
+        self.assertLess(own.index('# AGENTS.md — demo'), own.index('既存'))
+        # 機械で直さなかった行だけを行番号付きで出す（CLAUDE.local.md とホットキーは出さない）
+        self.assertIn('CLAUDE.mdを読む前に何かする', p.stderr)
+        self.assertNotIn('CLAUDE.local.md', p.stderr)
+        self.assertNotIn('ホットキー', p.stderr)
+
+    def test_移す指定は両方向けだけ(self):
+        (self.pj / 'CLAUDE.md').write_text('# x\n', encoding='utf-8')
+        p = self.run_tool('--target', 'claude', '--options', 'none', '--absorb-claude-md')
+        self.assertEqual(p.returncode, 2)
+
+    def test_配下のPJの状態の一覧(self):
+        root = self.pj.parent
+        for name in ('a', 'b', 'c'):
+            (root / name).mkdir()
+            (root / name / '.git').mkdir()
+        (root / 'b' / 'CLAUDE.md').write_text('# b\n', encoding='utf-8')
+        subprocess.run([sys.executable, str(TOOL), str(root / 'c'), '--options', 'autopush'],
+                       capture_output=True, text=True, env=self.env)
+        p = self.run_raw('--scan', str(root))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        lines = {l.split()[0]: l for l in p.stdout.splitlines()}
+        self.assertIn('未書き込み', lines['a'])
+        self.assertIn('CLAUDE.mdあり', lines['b'])
+        self.assertIn('最新（both / 選択 autopush）', lines['c'])
+
     def test_グローバルにもあるPCでは二重に読まれると知らせる(self):
         home = Path(self.env['CLAUDE_CONFIG_DIR'])
         home.mkdir()

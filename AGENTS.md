@@ -1,7 +1,8 @@
-<!-- codex-rules:begin (claude-rules/install.shが管理。手動編集しない — 変更はリポのrules/common-rules.mdへ) -->
-# AGENTS.md（グローバル共通ルール）
+<!-- claude-rules:embed:begin (版 3bf4bcf+dirty / embed-both / 選択 autocommit,autopush,worktree,toolname。claude-rules/tools/embed-rules.pyが書き込む。中を編集しない — 出典 https://github.com/jeeee-org/claude-rules のrules/common-rules.md) -->
+# 共通ルール（全PJ共通の下地）
 
-全PJに効く共通指示書。各PJの`AGENTS.md`が優先され、ここはその下地。
+全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。
+PJのルールはこの`AGENTS.md`に統一する（Claude CodeもCodexも直接読む）。`CLAUDE.md`は作らず、既にあるなら先頭の`@AGENTS.md`で繋ぐ（`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない）。
 
 ## 1. 進行管理：4軸 + checkpoint（共通骨格）
 
@@ -24,12 +25,12 @@
 - **`PROGRESS.md`に更新履歴を積まない。**「最終更新」は日付だけを書き、「前の更新 = 」を入れ子で重ねない（経緯はcheckpointへ）。**ヘッダが数千バイトに膨れるのはこれが原因。**
 - **AGENTS.mdにセッション履歴を追記しない**（毎回全文ロードされる）。
 - 決定（ADR）は独立した節を持たず、決定は日付付き1行で`REQUIREMENTS.md`の方針へ、理由は`NOTES.md`へ。
-- **常時ロードされるファイルの上限**（PJのAGENTS.mdで上書き可）: グローバルAGENTS.md **14,336B** / PJ AGENTS.md **6,144B** / PROGRESS.md **60行かつ12,288B**。判定はPJルートで`~/.codex/tools/check-limits.sh`。超過はその場で指摘し、意味を落とさずバイトを削る（畳める記録はcheckpointへ）。
+- **常時ロードされるファイルの上限**（PJのAGENTS.mdで上書き可）: 共通ルールのブロック **14,336B** / PJ AGENTS.md（ブロックの外） **6,144B** / PROGRESS.md **60行かつ12,288B**。判定はPJルートで`.claude-rules/check-limits.sh`。超過はその場で指摘し、意味を落とさずバイトを削る（畳める記録はcheckpointへ）。
 
 ## 3. 進行ルール
 
 ### セッション開始時（必須）
-1. `AGENTS.md`（グローバル＋PJ）を読む
+1. `AGENTS.md`（共通ルール＋PJ固有）を読む
 2. `PROGRESS.md`で現在地と次の一手を把握する
 3. 触る領域の`REQUIREMENTS.md` / `NOTES.md`該当箇所を読む
 
@@ -44,7 +45,7 @@
 - 作業ログ（何をどう変えたか・経緯）をその作業のcheckpointに書く。
 - `PROGRESS.md`の「完了」と「次の一手」を更新する。
 - 学びは`NOTES.md`、要件・スコープの変化は`REQUIREMENTS.md`へ。**片付いた要求・方針・決定・予定は消す**（経緯はcheckpointにある）。
-- **スキル化の自問**：**次にいつ・何に使うかを1文で言える時だけ**1行で提案する（本体は承認後）。同型作業の繰り返しがcheckpoints / `NOTES.md`にあれば作成を推奨に格上げ。実行部分はテスト付きCLI、判断込みは`.agents/skills/<name>/SKILL.md`。
+- **スキル化の自問**：**次にいつ・何に使うかを1文で言える時だけ**1行で提案する（本体は承認後）。同型作業の繰り返しがcheckpoints / `NOTES.md`にあれば作成を推奨に格上げ。実行部分はテスト付きCLI、判断込みは`.claude/skills/<name>/SKILL.md`（Codexは`.agents/skills/`）。
 
 ## 4. 書き分けの判断基準
 
@@ -90,13 +91,14 @@
 
 ## 6. 知見・学びの記録先（memoryは使わない）
 
+- **ファイルベースmemory（`~/.claude/.../memory/`）は使わない。**recallされても残骸として扱う。
 - **Codexの個人メモリに依存しない。**
 - **学びは作業中PJの`NOTES.md`に残す**（無ければ作る）。PJ規約の別ファイルがあれば従い、`NOTES.md`は運用上のメタ知見を担う。
 - **`NOTES.md`は「いま効く学び」だけ。** 開いた項目をその場で見直す：ルール・スキル・テストに昇格したら移した先を1行残して消す／前提が変わって効かなくなったら消す／一回限りのログはcheckpointへ。
 
 ## 7. PJ側AGENTS.mdの書き分け
 
-**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート・worktree・ブランチ・コミット規約・自動pushの要否／技術スタック・検証コマンド）。雛形と新PJの立ち上げは`$init-rules`。
+**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート・worktree・ブランチ・コミット規約・自動pushの要否／技術スタック・検証コマンド）。共通ルールのブロックは書き込み元で更新するので、中を編集しない。
 
 ## 8. 外部に出す文面にMarkdownを使わない
 
@@ -116,4 +118,44 @@
   - 例外＝**ファイル名・関数名・コミット識別子・課題管理の課題番号**（そのまま検索できる）。
   - **着手や完了を伝えるときも同じ。** 何を進行中にし、次に何をするかを日本語で書く。
 
-<!-- codex-rules:end -->
+<!-- claude-rules:embed:end -->
+
+# AGENTS.md — claude-rules
+
+Claude Code / Codexへのプロジェクト指示書。**会話開始時に必ず読む。**
+共通の進行管理・Git・記録ルールはこのファイル先頭の共通ルールに従う。ここには**このPJ固有のことだけ**を書く。
+
+## このプロジェクト固有の前提
+
+- Claude Code / Codexの**共通ルールと、それを入れる道具・スキルを配る**リポ。共通ルールは各PJの`AGENTS.md`の先頭へ`tools/embed-rules.py`で書き込む（2026-09-26にグローバルへの注入を廃止）。道具（スキル・フック・判定）は`install.sh`で各PCへ配る。
+- **最大のリスク＝正本の取り違え**。PJの`AGENTS.md`の**共通ルールのブロック内を直接編集しない**（次の書き込みで消える。このリポ自身の`AGENTS.md`も同じ）。編集するのは常にこのリポ側：
+  - 共通ルール → `rules/common-rules.md`（唯一の正本。読み手で違う所は`{{語}}`、選べる個人の運用は`<!-- if:… -->`で書く。個人の運用の一覧は`tools/build-rules.py`の`OPTIONS`）
+  - スキル → `skills/<name>/SKILL.md`（`init-rules`はClaude版とCodex版の2枚のまま。**片方を変えたらもう片方も見る**）
+- 共通ルールを変えたら、テストを通してcommitし、**このPCの全PJへ反映する**（`tools/embed-rules.py --scan ~/Develop`で「古い」を出して書き込み直し、PJごとにcommit）。手順はREADME「ルールを変更するとき」。
+- **自分自身に効くルールを書き換えるリポ**である点に注意。変更は反映した全PJの次セッション以降の挙動を変える。
+
+## サイズ上限（共通ルール§2の実務メモ）
+
+共通ルールのブロックの上限は**14,336B**（1024系）。`rules/common-rules.md`に追記したら`tools/tests/test_build_rules.py`（全版・全選択で上限内か）と、書き込んだPJでの`.claude-rules/check-limits.sh`の判定を確認する。
+
+## 4軸ドキュメント
+
+2026-09-12に`/init-rules`で整備済み。`README.md`は構成・手順の正本のまま。**README「経緯」は2026-09-12までの履歴として据え置き、以後の経緯は`checkpoints/`に書く**（READMEの経緯欄には追記しない）。
+
+## REQUIREMENTS.mdの性質
+
+- ルールと配布の仕組みそのものへの**改善案の受け皿**（他PCからの逆輸入・運用で出たズレ）。機能仕様は持たない。
+- **要求の面の形**（共通ルール§4）= **「追加要求: <題>」節を横に並べる**（窓口型）。改善案が随時・独立に来て終わりが無いため、上から順に叶える表は合わない。**節はカードに収まらない中身が出た時に作る**（無いうちは空節を置かない）。
+
+## Git運用（共通ルール§5の差分）
+
+- リモート: `https://github.com/jeeee-org/claude-rules.git`（**public**・個人OSS）
+- **main直接編集・直pushでよい**（§5.1 worktree必須の例外）。
+- push: 共通ルール§5の既定どおり**1作業ごとにcommit＋自動push**（事前承認不要）。
+- コミット規約: 日本語subject 1行（50字目安）＋ 空行 ＋ bodyに「何を・なぜ・どう・影響範囲」。
+- AI署名（`Co-Authored-By: Claude` / `🤖 Generated with ...`）は**付けない**（既存コミットに合わせる）。
+- ツール名quorum / claude-rulesはこのリポの主題なのでコミット本文に書いてよい（§5.2禁止①の例外）。
+
+## その他
+
+- ユーザーとは日本語でやり取りする。ドキュメントも日本語で書く。

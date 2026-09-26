@@ -7,6 +7,8 @@ description: 既存PJを、4軸＋checkpointの共通ルールの改訂（2026-0
 
 グローバル`~/.claude/CLAUDE.md`の§1〜§4・§6・§7（記録の5点、checkpoint方式、書き分け、NOTES.mdの片付け方、PJ側CLAUDE.md）に、昔の形のまま育ったPJを合わせる。
 
+> **読み替え（2026-09-26〜）**：共通ルールはグローバルに置かず、PJの`AGENTS.md`の先頭のブロック（`claude-rules:embed`）にある。本文の「グローバル」「`~/.claude/CLAUDE.md`」は**そのブロック**、「PJの`CLAUDE.md`」は**PJの`AGENTS.md`のブロックの外**と読み替える。PJにまだ共通ルールが無い、または`CLAUDE.md`が残っているなら、先に`install-rules`で書き込んで`AGENTS.md`へ統一してから始める。
+
 **原則**
 - **何も失わない**。移すものは原文のまま移し、書き直した分は機械で突き合わせる。
 - **過去の記録は事実なので書き換えない**。checkpointの本文で直すのはパスの参照だけ。
