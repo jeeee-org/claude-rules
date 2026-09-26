@@ -20,7 +20,11 @@
 
 > 依頼されたらここへカードを立ててから動く。**終わったら消して`PROGRESS.md`の完了へ1行**。
 
-(なし)
+### init-rulesの一本化（2026-09-26起票）
+- **何をする** = `init-rules`のClaude版とCodex版の2枚の正本を1枚にする（Claude版を土台に、どちらでも通じる書き方へ。`install.sh`が両方へコピー）
+- **叶っている状態** = 正本が`skills/init-rules/SKILL.md`の1枚で、`skills/codex-init-rules/`が無く、`install.sh`がClaude・Codexの両方へ同じものを配る。Claudeで空のリポに一式が作られる
+- **現在地**（2026-09-26）= 着手
+- **作業ログ** = `checkpoints/*-init-rulesの一本化-*`（0件）
 
 ## 要求
 
