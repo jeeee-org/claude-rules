@@ -665,7 +665,8 @@ def audit_pick(jid: str, rate: float) -> bool:
 def cmd_judge(a):
     p = pipeline()
     cfg = p.get("judge", {})
-    default_th = cfg.get("default_threshold", 0.9)
+    # 較正前の既定。null（既定）＝較正で閾値が出た問いだけ任せ、それまでは全部人へ回す（人の答えを溜めて育てる）
+    default_th = cfg.get("default_threshold")
     rate = cfg.get("audit_rate", 0.0)
     try:
         payload = json.loads(Path(a.answers[1:]).read_text() if a.answers.startswith("@") else a.answers)
@@ -704,7 +705,9 @@ def cmd_judge(a):
             else:
                 answer, conf = ans["answer"], float(ans.get("confidence", 0))
                 th = ths.get(q["id"], default_th)
-                if conf < th:
+                if th is None:
+                    decision, reason = "escalate", "較正前（この問いの閾値がまだ無い）なので人へ回す"
+                elif conf < th:
                     decision, reason = "escalate", f"確信度{conf:.2f}が閾値{th:.2f}未満"
                 elif answer == q["pass"]:
                     decision, reason = "auto_pass", f"確信度{conf:.2f}≧{th:.2f}"

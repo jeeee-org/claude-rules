@@ -21,7 +21,7 @@
   "sunset_min_runs": 10,
   "judge": {
     "agent": "gate-judge",
-    "default_threshold": 0.9,
+    "default_threshold": null,
     "target_accuracy": 0.95,
     "min_samples": 20,
     "audit_rate": 0.1,

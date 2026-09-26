@@ -161,6 +161,14 @@ class LoopRunTest(unittest.TestCase):
         scaffold(self.root, '--profile', 'dev', '--no-settings')
         self.loop = self.root / '.claude/loop'
         self.env = dict(os.environ, LOOP_DIR=str(self.loop), LOOP_NOW='1000')
+        # 判断役の自動の経路を見るテストが多いので、既定は「任せる」段階（数値の閾値）で回す。
+        # 較正前は人へ回す既定（null）は、それを見るテストで戻す
+        self.set_default_threshold(0.9)
+
+    def set_default_threshold(self, v):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['judge']['default_threshold'] = v
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -242,11 +250,37 @@ class LoopRunTest(unittest.TestCase):
 
     # --- 判断役 ---
 
+    def test_較正前は確信度が高くても人へ回す(self):
+        for prof in ('dev', 'generic'):  # ひな型の既定は null
+            cfg = json.loads((TOOL.parents[1] / 'templates/loop' / prof / '.claude/loop/pipeline.json').read_text())
+            self.assertIsNone(cfg['judge']['default_threshold'])
+        self.set_default_threshold(None)
+        self.to_judge()
+        ans = {'answers': [{'id': 'req-intent', 'answer': 'yes', 'confidence': 0.99, 'reason': 'x'}]}
+        self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
+        s = self.state()['steps']['requirements']
+        self.assertEqual(s['status'], 'blocked')
+        self.assertTrue(s['needs_human'])
+        self.assertIn('較正前', s['blocker'])
+
+    def test_較正で閾値が出た問いは任せる(self):
+        self.set_default_threshold(None)
+        self.to_judge()
+        (self.loop / 'judge').mkdir(exist_ok=True)
+        (self.loop / 'judge/calibration.json').write_text(json.dumps({'thresholds': {'req-intent': 0.9}}))
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['judge']['audit_rate'] = 0
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg))
+        ans = {'answers': [{'id': 'req-intent', 'answer': 'yes', 'confidence': 0.95, 'reason': 'x'}]}
+        self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'done')
+
     def test_確信度が閾値以上の合格は自動で通す(self):
         self.to_judge()
         ans = {'answers': [{'id': 'req-intent', 'answer': 'yes', 'confidence': 0.97, 'reason': 'x'}]}
         cfg = json.loads((self.loop / 'pipeline.json').read_text())
         cfg['judge']['audit_rate'] = 0
+        cfg['judge']['default_threshold'] = 0.9  # 最初から任せるリポは数値を書く（以前の既定の動き）
         (self.loop / 'pipeline.json').write_text(json.dumps(cfg))
         self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
         self.assertEqual(self.state()['steps']['requirements']['status'], 'done')
