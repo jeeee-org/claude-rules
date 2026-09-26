@@ -334,3 +334,9 @@
 - **気づき③: 人に仰ぐ段階の統括役の振る舞いが定義に無い。** 止まる時に`pending`を貼る・`calibrate`の数字を見せるまではあるが、「判断役を通さずに人へ聞かない」「人に答えの理由を書いてもらう（`lessons.md`の材料になる）」「任せる範囲を広げる（`calibrate --apply`）・決定論へ上げる（`promote`）は人」が段階の運用として書かれていない。入れた先で統括役の定義に節を足した。
   - **改善案**: 統括役の定義に「育てる段階」の節を持たせ、`pipeline.json`の設定（例: `judge.stage: "train" | "delegate"`）で切り替える。
 - **反映（2026-09-26）**: ①`judge.default_threshold`の既定をnull（較正で閾値が出た問いだけ任せ、それまでは全部人へ）にし、ひな型の2つの工程表もnullに。工程役の問い（`block --ask`）は元から較正済みの問いだけ任せる作りで、判断役の問いだけが食い違っていた。最初から任せたいリポは数値を書く。READMEの「判断役を育てる」に段階（育てる／任せる／決定論へ上げる）ごとの起きることと人がすることの表。②は前の項目の反映で`per_item.serial`として入っていた。③統括役の定義に「判断役を育てる」節（判断役を通さずに人へ聞かない・答えの理由を`--note`で頼む・止まる時に`calibrate`の一致率を見せる・`calibrate --apply`と`promote`は人）。**`judge.stage`の切り替えは入れなかった**——段階は較正の記録で決まり、設定を足すと「任せる段階なのに較正が無い」ような食い違いの組み合わせが生まれるため。テスト2件追加（較正前は確信度が高くても人へ・較正で閾値が出た問いは任せる）。⇒ [反映済み → templates/loop/common/.claude/loop/{bin/loopctl.py,README.md}・templates/loop/common/.claude/agents/loop-conductor.md・templates/loop/{dev,generic}/.claude/loop/pipeline.json]
+
+## 2026-09-26 — fix-spacing.pyが共通ルールのブロックの中まで直した
+- **状況**: 別PCでのPJの移行（共通ルールをAGENTS.mdへ書き込んだ後）で、`fix-spacing.py --write AGENTS.md`を当てた。
+- **気づき**: 共通ルールのブロック（`claude-rules:embed:begin`〜`end`）の中まで直した。マーカー行の「版 <commit>」が「版<commit>」になり、`embed-rules.py`が前回の選択を読めず「初回は--optionsを」と止まった。§9の悪い例「`install.sh` を実行」も良い例に書き換わった。そのPJでは同じ選択でブロックを作り直して元に戻した。
+- **改善案**: `fix-spacing.py`がembedマーカーの間を既定で守る（`--keep`の既定に入れる）。あわせて`migrate-rules`の手順7に「AGENTS.mdはブロックの外だけを対象にする」と一行足す。
+- **反映（2026-09-26）**: 提案どおり。`fix-spacing.py`は共通ルールのブロック（マーカー行を含む）を常に飛ばす（`--keep`の既定でなく、外す指定も持たない。生成物なので直すなら正本側）。`migrate-rules`の手順7に「`AGENTS.md`はブロックの外だけが対象」。加えて、壊れた後でも戻せるよう`embed-rules.py`がマーカー行の境目の空白が詰められていても版と選択を読むようにした（書き込み直すと元の形に戻る）。テスト2件追加。⇒ [反映済み → tools/fix-spacing.py・tools/embed-rules.py・skills/migrate-rules/SKILL.md]

@@ -52,6 +52,18 @@ class FixSpacingTest(unittest.TestCase):
 
     # --- 触らない ---
 
+    def test_共通ルールのブロックの中は触らない(self):
+        text = ('<!-- claude-rules:embed:begin (版 ccc4ef9 / embed-both / 選択 autocommit。…) -->\n'
+                '- 悪い例「`install.sh` を実行」\n'
+                '```markdown\n'
+                '### <作業名>\n'
+                '<!-- claude-rules:embed:end -->\n'.replace('### <作業名>\n', '### <作業名>\n```\n')
+                + '\n# AGENTS.md\nWindows 側で動かす。\n')
+        out = self.fixed(text)
+        self.assertIn('(版 ccc4ef9 / embed-both / 選択 autocommit。', out)
+        self.assertIn('「`install.sh` を実行」', out)
+        self.assertIn('Windows側で動かす。', out)  # ブロックの外は直す
+
     def test_インラインコードの中身は変えない(self):
         text = '見出し `## 9. 応答の書き方` を引用する。\n'
         self.assertEqual(self.fixed(text), '見出し`## 9. 応答の書き方`を引用する。\n')

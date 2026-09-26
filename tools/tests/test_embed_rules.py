@@ -213,6 +213,19 @@ class EmbedTest(unittest.TestCase):
         self.assertIn('選択 worktree,toolname。', head)
         self.assertIn('## 9. 応答の書き方', self.read('AGENTS.md'))
 
+    def test_版の境目の空白が詰められても前回の選択を読める(self):
+        self.run_tool('--target', 'codex', '--options', 'autopush,worktree')
+        text = self.read('AGENTS.md')
+        head = text.splitlines()[0]
+        squashed = head.replace('(版 ', '(版').replace('選択 ', '選択')
+        (self.pj / 'AGENTS.md').write_text(text.replace(head, squashed), encoding='utf-8')
+        p = self.run_raw(str(self.pj))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        new_head = self.read('AGENTS.md').splitlines()[0]
+        self.assertIn('embed-codex', new_head)
+        self.assertIn('選択 autopush,worktree。', new_head)
+        self.assertIn('(版 ', new_head)  # 書き直すと元の形に戻る
+
     def test_選び直すと入れ替わる(self):
         self.run_tool('--options', 'all')
         self.assertIn('### 5.1 worktreeルール', self.read('AGENTS.md'))

@@ -11,6 +11,9 @@
                 何度でも指定できる
 
 **触らないもの**
+  - PJの`AGENTS.md`に書き込まれた共通ルールのブロック（`claude-rules:embed:begin`〜`end`の行を含む）。
+    claude-rulesの正本からの生成物で、マーカー行の「版 <commit>」を詰めると`embed-rules.py`が前回の選択を
+    読めなくなり、§9の悪い例まで良い例に書き換わる。直すなら正本を直して書き込み直す
   - コードフェンス（``` ～ ```）の中と、インラインコード（`…`）の**中身**。
     境目の判定では印を透かすので、`` `install.sh` を``の空白は落ちる（中身は変わらない）
   - 行頭のマーカー（見出し記号・箇条書き・番号・チェックボックス・引用）の直後の空白
@@ -50,6 +53,10 @@ FENCE = re.compile(r'^\s*(```|~~~)')
 
 KEEP_SPACE = ''      # 残すと決めた空白の目印
 SPAN_SLOT = ''       # インラインコードの中身の目印
+
+
+# 共通ルールのブロック（claude-rules/tools/embed-rules.pyが書き込む生成物）。中は触らない
+EMBED_BEGIN, EMBED_END = 'claude-rules:embed:begin', 'claude-rules:embed:end'
 
 
 class Abort(Exception):
@@ -102,8 +109,15 @@ def fix_line(line):
 def scan(text, keeps):
     """(直した全文, 直した行のリスト, 判断が要る行のリスト)"""
     fixed, changed, review = [], [], []
-    in_fence = False
+    in_fence = in_embed = False
     for no, line in enumerate(text.split('\n'), 1):
+        if EMBED_BEGIN in line:
+            in_embed = True
+        if in_embed:
+            fixed.append(line)
+            if EMBED_END in line:
+                in_embed = False
+            continue
         if FENCE.match(line):
             in_fence = not in_fence
             fixed.append(line)

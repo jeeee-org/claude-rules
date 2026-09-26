@@ -57,8 +57,9 @@ TOOL_DIR = '.claude-rules'
 
 _BLOCK_RE = re.compile(rf'^<!-- {re.escape(BEGIN)}.*?^<!-- {re.escape(END)} -->\n?', re.M | re.S)
 _IMPORT_RE = re.compile(rf'^<!-- {re.escape(IMPORT_MARK)}.*?-->\n@AGENTS\.md\n?', re.M)
-_VERSION_RE = re.compile(rf'(<!-- {re.escape(BEGIN)} \(版 )\S+ /')
-_HEAD_RE = re.compile(rf'<!-- {re.escape(BEGIN)} \(版 \S+ / embed-(\w+) / 選択 ([^。]+)。')
+# 版と選択を読む。境目の空白が詰められていても読めるようにする（fix-spacing.py等で「版 x」→「版x」になった例がある）
+_VERSION_RE = re.compile(rf'(<!-- {re.escape(BEGIN)} \(版)\s*[^\s/]+\s*/')
+_HEAD_RE = re.compile(rf'<!-- {re.escape(BEGIN)} \(版\s*[^\s/]+\s*/\s*embed-(\w+)\s*/\s*選択\s*([^。]+?)\s*。')
 
 
 def source_version() -> str:

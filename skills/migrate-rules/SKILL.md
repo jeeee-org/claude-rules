@@ -136,6 +136,7 @@ python3 "$clone/tools/fix-spacing.py" --help
   python3 "$clone/tools/fix-spacing.py" <file>...        # 検査だけ
   python3 "$clone/tools/fix-spacing.py" --write <file>...  # 直す
   ```
+  - **`AGENTS.md`はブロックの外（PJ固有の部分）だけが対象**。共通ルールのブロック（`claude-rules:embed:begin`〜`end`）は道具が既定で飛ばす（生成物。手でも直さない）。
   - 行頭のマーカー・日付・章番号の直後、コードフェンスの中、インラインコードの中身は道具が守る。**その場の`sed`や`grep -P`で当てない**（記号を挟んだ両側と行頭の番号が潰れる。NOTES 2026-09-19）。
   - **「判断が要る候補」は直さずに出る**ので、1件ずつ見る。規則の悪い例を載せている行は`--keep RE`で守る。
   - 過去のcheckpointは事実として据え置き、**どこまで遡って直すかはユーザーに聞く**（常時読む4ファイルまでが既定の線）。
