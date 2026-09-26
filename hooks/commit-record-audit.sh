@@ -12,7 +12,7 @@
 # 設計方針:
 #  - fail-open。読めない・分からない時は黙る。
 #  - 直近（既定120秒以内）にできたcommitだけを見る。古いHEADを蒸し返さない。
-#  - 記録の方式を使っていないリポでは黙る。CLAUDE.mdは数えない（入口と同じ）。
+#  - 記録の方式を使っていないリポでは黙る。CLAUDE.md・AGENTS.mdは数えない（入口と同じ）。
 # 登録はclaude-rules/install.shが行う（~/.claude/settings.json のPostToolUse）。
 set -u
 

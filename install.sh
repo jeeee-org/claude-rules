@@ -11,10 +11,7 @@
 #   CLAUDE_CONFIG_DIR=/path/.claude CODEX_HOME=/path/.codex ./install.sh
 # Codex をメインエージェントに使わないPCでは Codex 側の配置を丸ごと省ける:
 #   ./install.sh --no-codex        （または CLAUDE_RULES_INSTALL_CODEX=0 ./install.sh）
-#   ※ quorum も AGENTS.md へ注入するため、そちらを止めない限り
-#      AGENTS.md 自体は残る。ここで省けるのは claude-rules 分だけ。
 # 複数PCへの事前配布を可能にするため、CLI未導入でも両設定ディレクトリを作る。
-# 新PCでは claude-rules -> quorum の順に install すると CLAUDE.md の並びが揃う。
 # **$CLAUDE_CONFIG_DIR/settings.json を書き換えます**（記録の関門フック2件を hooks へ登録。
 # 控えを settings.json.bak に取ります）。登録を止めるなら:
 #   ./install.sh --no-hook-register   （または CLAUDE_RULES_REGISTER_HOOKS=0 ./install.sh）
@@ -33,7 +30,7 @@ for arg in "$@"; do
     --no-hook-register) REGISTER_HOOKS=0 ;;
     --no-display-settings) DISPLAY_SETTINGS=0 ;;
     --keep-global-rules) KEEP_GLOBAL_RULES=1 ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings / --keep-global-rules）" >&2; exit 2 ;;
   esac
 done
@@ -83,7 +80,7 @@ verify_link() { # verify_link <リンクのパス> <用途の説明>
 
 # ここが claude-rules の clone 自身かどうか。配布先へ取り込まれた複製（他リポの
 # bundled/ 配下など）では rules/*.md は pull 専用で、そこでの編集は上流へ届かず
-# 次の取り込みで黙って消える。生成物側はマーカー行で止めているが、複製された
+# 次の取り込みで黙って消える。PJへ書き込んだ共通ルールはマーカー行で止めているが、複製された
 # 正本側には歯止めが無く、実際に編集して install まで通してしまった（IMPROVEMENTS
 # 2026-09-01）。止めはしないが、気づけるように必ず知らせる。
 warn_if_not_upstream_clone() {

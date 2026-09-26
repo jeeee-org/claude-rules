@@ -1,19 +1,19 @@
 ---
 name: migrate-rules
-description: 既存PJを、4軸＋checkpointの共通ルールの改訂（2026-09-12以降の記録ルール）に揃える。checkpointの置き場と名前の変更、REQUIREMENTS.mdの新設と進行中の作業カードの立ち上げ、決定・未決・ADRの振り分け、NOTES.mdを「いま効く学び」だけにする整理、PROGRESS.mdの圧縮、PJのCLAUDE.mdの書き直しを、何も落とさずに行う。docs/checkpoints/が残っている、REQUIREMENTS.mdが無い、NOTES.mdに決定や済んだ記録が溜まっている、といったPJで使う。新規PJの立ち上げはinit-rules。
+description: 既存PJを、4軸＋checkpointの共通ルールの改訂（2026-09-12以降の記録ルール）に揃える。checkpointの置き場と名前の変更、REQUIREMENTS.mdの新設と進行中の作業カードの立ち上げ、決定・未決・ADRの振り分け、NOTES.mdを「いま効く学び」だけにする整理、PROGRESS.mdの圧縮、PJのAGENTS.md（PJ固有の部分）の書き直しを、何も落とさずに行う。docs/checkpoints/が残っている、REQUIREMENTS.mdが無い、NOTES.mdに決定や済んだ記録が溜まっている、といったPJで使う。新規PJの立ち上げはinit-rules。
 ---
 
 # migrate-rules — 既存PJを新しい記録ルールへ揃える
 
-グローバル`~/.claude/CLAUDE.md`の§1〜§4・§6・§7（記録の5点、checkpoint方式、書き分け、NOTES.mdの片付け方、PJ側CLAUDE.md）に、昔の形のまま育ったPJを合わせる。
+共通ルール（PJの`AGENTS.md`先頭のブロック）の§1〜§4・§6・§7（記録の5点、checkpoint方式、書き分け、NOTES.mdの片付け方、PJ側AGENTS.md）に、昔の形のまま育ったPJを合わせる。
 
-> **読み替え（2026-09-26〜）**：共通ルールはグローバルに置かず、PJの`AGENTS.md`の先頭のブロック（`claude-rules:embed`）にある。本文の「グローバル」「`~/.claude/CLAUDE.md`」は**そのブロック**、「PJの`CLAUDE.md`」は**PJの`AGENTS.md`のブロックの外**と読み替える。PJにまだ共通ルールが無い、または`CLAUDE.md`が残っているなら、先に`install-rules`で書き込んで`AGENTS.md`へ統一してから始める。
+> **前提**：共通ルールはPJの`AGENTS.md`の先頭のブロック（`claude-rules:embed`）にある。PJにまだ共通ルールが無い、または`CLAUDE.md`が残っているなら、先に`install-rules`で書き込んで`AGENTS.md`へ統一してから始める。以下の「PJの`AGENTS.md`」はブロックの外（PJ固有の部分）を指し、ブロックの中は触らない。
 
 **原則**
 - **何も失わない**。移すものは原文のまま移し、書き直した分は機械で突き合わせる。
 - **過去の記録は事実なので書き換えない**。checkpointの本文で直すのはパスの参照だけ。
 - **判断が要るもの**（checkpointの名前、決定か学びか、未決が生きているか、PJの目的）はClaudeが案を出す。スコープに関わるものはユーザーが決める。
-- **1手順1コミット**。pushの有無・ブランチはPJの`CLAUDE.md`に従う。
+- **1手順1コミット**。pushの有無・ブランチはPJの`AGENTS.md`に従う。
 
 ## 0. 道具の場所
 
@@ -41,8 +41,8 @@ python3 "$clone/tools/fix-spacing.py" --help
 | ADR | `PROGRESS.md`のADR節、`docs/adr/`（1決定1ファイル）や`docs/adr.md`（1ファイル）の件数。ADR番号がコード・README・checkpointから引かれているか（`grep -rln 'ADR-0'`） |
 | `PROGRESS.md` | 「次にやること」に予定・運用ルール・未決が混ざっていないか。行数と上限 |
 | `NOTES.md` | 行数。済んだ手続き、止まった進捗表、古い接続情報、長い調査の経緯が混ざっていないか |
-| PJの`CLAUDE.md` | 記録ルールの説明がグローバルと重複・食い違いしていないか。**グローバルを上書きしている記述**（上限値の上書き・「事前確認」から「禁止」への格上げ・例外宣言・関門の有無）が何件あるか。目的が作業の実態と合っているか |
-| memory | `~/.claude/projects/<PJのパスを-で繋いだ名前>/memory/`の残骸（グローバル§6で使わない） |
+| PJの`AGENTS.md` | 記録ルールの説明が共通ルールと重複・食い違いしていないか。**共通ルールを上書きしている記述**（上限値の上書き・「事前確認」から「禁止」への格上げ・例外宣言・関門の有無）が何件あるか。目的が作業の実態と合っているか |
+| memory | `~/.claude/projects/<PJのパスを-で繋いだ名前>/memory/`の残骸（共通ルール§6で使わない） |
 
 - **AskUserQuestionで決めてもらう**（推奨を先頭に置く）。
   - 過去のcheckpointを全部移すか、据え置いて新規分からにするか
@@ -58,7 +58,7 @@ python3 "$clone/tools/fix-spacing.py" --help
    - **入口は`plan`が自分で選ぶ**。`docs/checkpoints/`に日付名のcheckpointがあれば「移動と改名」、無くて`checkpoints/`に`YYYY-MM-DD.md`が残っていれば「改名だけ」。どちらで動くかは1行目に出るので確かめる。移行は**置き場を揃える作業と名前を付ける作業の2つ**で、前者だけ済んだPJが実際にある（一括で移した時にできる。名前は1件ずつ見出しを読む判断が要るので後回しになる）。
    - 「※ `checkpoints/`にも日付名のままのN件がある」と出たら、その回のあとにもう一度plan→applyを回して改名する。
 2. 名前を埋める。形は`作業名-中身`（どちらも日本語の短い語）。各ファイルの見出しを読み、**その日の主な作業**を書く（例：`2026-08-05<TAB>認証の不具合対応-トークン失効の切り分け`）。
-   - **同じ作業が複数日に分かれていたら、作業名を揃える**。`checkpoints/*-作業名-*`で一括して引けるようにするため（グローバル§2）。生きている作業なら、手順3で立てるカードの見出しとも同じ語にする。
+   - **同じ作業が複数日に分かれていたら、作業名を揃える**。`checkpoints/*-作業名-*`で一括して引けるようにするため（共通ルール§2）。生きている作業なら、手順3で立てるカードの見出しとも同じ語にする。
    - 1日で終わった過去分は、無理に2つに割らず1語のままでよい。
    - 1日に複数の作業があっても、ファイルは分割しない。主なものを2つまで並べる。
    - `plan`の候補は見出しを切り出しただけなので、そのまま使わない。
@@ -71,7 +71,7 @@ python3 "$clone/tools/fix-spacing.py" --help
 
 - 雛形は`init-rules`の`SKILL.md`にある`REQUIREMENTS.md`の雛形。「目的・スコープ」には、手順1で決めたPJの目的を書く。
 - **`REQUIREMENTS.md`が既にある時**は、雛形の6節（目的・スコープ／進行中の作業／要求／やること / バックログ／決定・方針／未決事項）に組み替える。
-  - 機能仕様・実機の構成・非機能要件などPJ固有の節は、消さずに「要求」の下へ置く。**形は2つあるので（グローバル§4）、どちらを使うかをPJの`CLAUDE.md`の「REQUIREMENTS.mdの性質」で宣言してから移す。**
+  - 機能仕様・実機の構成・非機能要件などPJ固有の節は、消さずに「要求」の下へ置く。**形は2つあるので（共通ルール§4）、どちらを使うかをPJの`AGENTS.md`の「REQUIREMENTS.mdの性質」で宣言してから移す。**
   - 古い「バックログ」「対象」は、済んだ項目を消してから今のバックログに混ぜる。
   - 「解決済み」の節は片付いた未決として扱い、移さずに移行のcheckpointへ書く。
 - **集める元**：`NOTES.md`の決定・未決の節、`PROGRESS.md`の「次にやること」とADR節、`docs/adr/`や`docs/adr.md`、直近のcheckpointの「残タスク」「次にやること」「未確認」。
@@ -79,7 +79,7 @@ python3 "$clone/tools/fix-spacing.py" --help
   - 決定 → 「決定・方針」に日付付き1行。日付は決めた日を、checkpointで確かめて書く。理由は`NOTES.md`に残す。
   - 予定・作業 → 「やること / バックログ」。
   - 未決 → 「未決事項」。**移す前に、片付いていないか確かめる**。後のcheckpointや実物で決着していることが多い。片付いた未決は移さず、どう片付いたかを移行のcheckpointに書く。片付いた根拠が記録にも実物にも無ければ、未決のまま移す。
-- **いま動いている作業はカードにする**（グローバル§4）。`PROGRESS.md`の「進行中」、直近のcheckpointの続き、着手済みのバックログを見て、**まだ終わっていないものだけ**1作業1カードで「進行中の作業」節へ置く。
+- **いま動いている作業はカードにする**（共通ルール§4）。`PROGRESS.md`の「進行中」、直近のcheckpointの続き、着手済みのバックログを見て、**まだ終わっていないものだけ**1作業1カードで「進行中の作業」節へ置く。
   - 「現在地」は最新の1〜3行だけを書き、**経緯は積まない**（経緯はcheckpointにある）。「作業ログ」はその作業のcheckpointを`checkpoints/*-<作業名>-*`の形で指す。
   - 過去に終わった作業はカードにしない。着手していない予定は「やること / バックログ」のまま。
 - **ADRは一件ずつ**：生きている決定は方針へ、理由は`NOTES.md`へ。覆った・片付いたものは移さない。`docs/adr/`や`docs/adr.md`を廃止するなら、`git rm`の前に全件の行き先を表にして、移行のcheckpointに残す。
@@ -121,11 +121,11 @@ python3 "$clone/tools/fix-spacing.py" --help
 - 手順3で見つけた落ちた作業は、現在地に⚠️で出す。
 - 完了の先頭に、今回の移行の1行とcheckpointへのリンクを足す。
 
-## 6. PJのCLAUDE.md
+## 6. PJのAGENTS.md（PJ固有の部分）
 
 - `init-rules`の雛形の形で、PJ固有の差分だけに書き直す（固有の前提と最大のリスク／REQUIREMENTS.mdの性質／Git運用の差分／その他）。
-- グローバルと重複する記録ルールの説明（PROGRESS.mdは進捗ログ、NOTES.mdは未確定事項の置き場、など）は消す。
-- **消す前に、グローバルの既定と違う値・禁止の強さ・例外宣言が含まれていないかを見る。** 同じ話題でも中身が違えばPJ固有の差分なので残す。実例（2026-09-15、あるモノレポ）：上限のPJ上書き、`--force` pushの禁止への格上げ（グローバルは「事前確認」止まり）、規約がsession側の指示より勝つ宣言、rebaseを事前確認の対象外とする宣言、レビューの起こし方の制限（グローバル§3の関門サブエージェントと逆方向）の5件が、重複に見えて固有の差分だった。
+- 共通ルールと重複する記録ルールの説明（PROGRESS.mdは進捗ログ、NOTES.mdは未確定事項の置き場、など）は消す。
+- **消す前に、共通ルールの既定と違う値・禁止の強さ・例外宣言が含まれていないかを見る。** 同じ話題でも中身が違えばPJ固有の差分なので残す。実例（2026-09-15、あるモノレポ）：上限のPJ上書き、`--force` pushの禁止への格上げ（共通ルールは「事前確認」止まり）、規約がsession側の指示より勝つ宣言、rebaseを事前確認の対象外とする宣言、レビューの起こし方の制限（共通ルール§3の関門サブエージェントと逆方向）の5件が、重複に見えて固有の差分だった。
 - 目的・スコープを変えるのは、手順1でユーザーが決めた場合だけ。
 - Git方針（リモート・push・ブランチ・コミット規約）は既存の記述を引き継ぐ。このスキルで変えない。
 
@@ -139,14 +139,14 @@ python3 "$clone/tools/fix-spacing.py" --help
   - 行頭のマーカー・日付・章番号の直後、コードフェンスの中、インラインコードの中身は道具が守る。**その場の`sed`や`grep -P`で当てない**（記号を挟んだ両側と行頭の番号が潰れる。NOTES 2026-09-19）。
   - **「判断が要る候補」は直さずに出る**ので、1件ずつ見る。規則の悪い例を載せている行は`--keep RE`で守る。
   - 過去のcheckpointは事実として据え置き、**どこまで遡って直すかはユーザーに聞く**（常時読む4ファイルまでが既定の線）。
-- **書き直した`REQUIREMENTS.md`・`PROGRESS.md`・`CLAUDE.md`も突き合わせる**。書き直しで落ちた予定・未検証の項目・グローバルを上書きしていた宣言が見つかる。
+- **書き直した`REQUIREMENTS.md`・`PROGRESS.md`・`AGENTS.md`も突き合わせる**。書き直しで落ちた予定・未検証の項目・共通ルールを上書きしていた宣言が見つかる。
   ```bash
   python3 "$clone/tools/check-moved-lines.py" --from HEAD:REQUIREMENTS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
   python3 "$clone/tools/check-moved-lines.py" --from HEAD:PROGRESS.md PROGRESS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
-  python3 "$clone/tools/check-moved-lines.py" --from HEAD:CLAUDE.md CLAUDE.md REQUIREMENTS.md NOTES.md checkpoints/*.md
+  python3 "$clone/tools/check-moved-lines.py" --from HEAD:AGENTS.md AGENTS.md REQUIREMENTS.md NOTES.md checkpoints/*.md
   ```
   - ここでも**冒頭の「比較元」**が、意図したファイルを指しているか見る（手順4と同じ）。
-  - `CLAUDE.md`で出た行は、「グローバルと同じ内容だから消した」と「グローバルと違う値・強さ・例外だった」を1行ずつ分ける。後者は戻す（手順6）。
+  - `AGENTS.md`で出た行は、「共通ルールと同じ内容だから消した」と「共通ルールと違う値・強さ・例外だった」を1行ずつ分ける。後者は戻す（手順6）。
 - **上限**：`~/.claude/tools/check-limits.sh`。
 - **memory**：ユーザーが削除を選んだ場合だけ消す（リポの外なのでコミットは不要）。
 - **移行のcheckpoint**（`checkpoints/<今日>-記録ルールの移行-共通ルールの取り込み.md`）に書くこと：
@@ -156,7 +156,7 @@ python3 "$clone/tools/fix-spacing.py" --help
   - 見つけた落ちた作業
   - 突き合わせの結果（どこにも無かった行が何だったか）
   - サイズの前後
-- **コミットの粒度**：①checkpointの移動 ②`REQUIREMENTS.md`の新設と`NOTES.md`・`PROGRESS.md`の整理（移行のcheckpointを含む）③PJの`CLAUDE.md`。
+- **コミットの粒度**：①checkpointの移動 ②`REQUIREMENTS.md`の新設と`NOTES.md`・`PROGRESS.md`の整理（移行のcheckpointを含む）③PJの`AGENTS.md`。
 
 ## 注意
 
