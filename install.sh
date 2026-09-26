@@ -148,8 +148,15 @@ verify_link "$CLAUDE_CONFIG_DIR/skills/init-rules/IMPROVEMENTS.md" "IMPROVEMENTS
 rm -rf "$CLAUDE_CONFIG_DIR/skills/migrate-rules"
 cp -R "$SRC_DIR/skills/migrate-rules" "$CLAUDE_CONFIG_DIR/skills/migrate-rules"
 
+# install-rulesスキル（共通ルールの導入・更新を選択肢で案内する。PJへの書き込みもここから）。
+# cloneしただけのPCでも使えるよう、リポの .claude/skills と .agents/skills からも symlink で見せている
+rm -rf "$CLAUDE_CONFIG_DIR/skills/install-rules"
+cp -R "$SRC_DIR/skills/install-rules" "$CLAUDE_CONFIG_DIR/skills/install-rules"
+
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/skills"
+  rm -rf "$CODEX_HOME/skills/install-rules"
+  cp -R "$SRC_DIR/skills/install-rules" "$CODEX_HOME/skills/install-rules"
   rm -rf "$CODEX_HOME/skills/init-rules"
   cp -R "$SRC_DIR/skills/codex-init-rules" "$CODEX_HOME/skills/init-rules"
   ln -sfn "$IMPROVEMENTS_FILE" "$CODEX_HOME/skills/init-rules/IMPROVEMENTS.md"
@@ -346,6 +353,7 @@ echo "  - CLAUDE.md（claude-rules ブロック）"
 echo "  - skills/init-rules"
 echo "  - skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
 echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える）"
+echo "  - skills/install-rules（共通ルールの導入・更新・PJへの書き込みを案内する）"
 echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
 if [ "$GUARD_REGISTERED" = 0 ]; then
   echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh・push-attribution-guard.sh（コピーのみ。登録は上記の案内を参照）"
@@ -361,6 +369,7 @@ if [ "$INSTALL_CODEX" = 1 ]; then
   echo "  - $CODEX_TARGET_MD（codex-rules ブロック）"
   echo "  - $CODEX_HOME/skills/init-rules"
   echo "  - $CODEX_HOME/skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
+  echo "  - $CODEX_HOME/skills/install-rules"
   echo "  - $CODEX_HOME/skills/triage（自然言語での明示トリアージ）"
   echo "  - $CODEX_HOME/hooks/codex-triage（初回プロンプト分類ラッパー）"
 else

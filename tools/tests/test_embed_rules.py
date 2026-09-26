@@ -28,34 +28,39 @@ class EmbedTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def run_tool(self, *args):
-        return subprocess.run([sys.executable, str(TOOL), str(self.pj), *args],
-                              capture_output=True, text=True, env=self.env)
+        # 初回は個人の運用の選択が必須。テストでは明示しない限り「なし」で書き込む
+        if '--options' not in args and '--remove' not in args and '--check' not in args \
+                and not (self.pj / 'AGENTS.md').exists() and not (self.pj / 'CLAUDE.md').exists():
+            args = (*args, '--options', 'none')
+        return self.run_raw(str(self.pj), *args)
+
+    def run_raw(self, *args):
+        return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, env=self.env)
 
     def read(self, name):
         return (self.pj / name).read_text(encoding='utf-8')
 
-    def test_両方向けは共通ルールをAGENTSへ書きCLAUDEから読み込む(self):
+    def test_両方向けはAGENTSに統一しCLAUDEを作らない(self):
         p = self.run_tool()
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue(self.read('AGENTS.md').startswith(BEGIN))
         self.assertIn('embed-both', self.read('AGENTS.md').splitlines()[0])
-        self.assertIn('@AGENTS.md', self.read('CLAUDE.md').splitlines())
-        self.assertNotIn(BEGIN, self.read('CLAUDE.md'))
+        self.assertFalse((self.pj / 'CLAUDE.md').exists())
         self.assertTrue(os.access(self.pj / '.claude-rules' / 'check-limits.sh', os.X_OK))
 
     def test_PJ固有の指示は残り共通ルールの下に続く(self):
         (self.pj / 'AGENTS.md').write_text('# PJ\n\n- 固有の指示\n', encoding='utf-8')
-        self.run_tool()
+        self.run_tool('--options', 'none')
         text = self.read('AGENTS.md')
         self.assertLess(text.index('claude-rules:embed:end'), text.index('- 固有の指示'))
         self.assertTrue(text.endswith('# PJ\n\n- 固有の指示\n'))
 
     def test_2回目は変更なしで最新と判定(self):
         self.run_tool()
-        before = self.read('AGENTS.md'), self.read('CLAUDE.md')
+        before = self.read('AGENTS.md')
         p = self.run_tool()
         self.assertIn('変更なし', p.stdout)
-        self.assertEqual(before, (self.read('AGENTS.md'), self.read('CLAUDE.md')))
+        self.assertEqual(before, self.read('AGENTS.md'))
         self.assertEqual(self.run_tool('--check').returncode, 0)
 
     def test_古いブロックは差し替わり外は触らない(self):
@@ -72,7 +77,7 @@ class EmbedTest(unittest.TestCase):
 
     def test_既存のCLAUDEは残し読み込みを先頭に足してCodexに届かないと知らせる(self):
         (self.pj / 'CLAUDE.md').write_text('# CLAUDE.md\n\n- Claude向けの固有指示\n', encoding='utf-8')
-        p = self.run_tool()
+        p = self.run_tool('--options', 'none')
         text = self.read('CLAUDE.md')
         self.assertTrue(text.splitlines()[1] == '@AGENTS.md')
         self.assertIn('- Claude向けの固有指示', text)
@@ -103,7 +108,8 @@ class EmbedTest(unittest.TestCase):
 
     def test_取り除くと元に戻る(self):
         (self.pj / 'CLAUDE.md').write_text('# CLAUDE.md\n\n- 固有\n', encoding='utf-8')
-        self.run_tool()
+        self.run_tool('--options', 'none')
+        self.assertIn('@AGENTS.md', self.read('CLAUDE.md'))
         self.run_tool('--remove')
         self.assertEqual(self.read('CLAUDE.md'), '# CLAUDE.md\n\n- 固有\n')
         self.assertFalse((self.pj / 'AGENTS.md').exists())
@@ -111,12 +117,69 @@ class EmbedTest(unittest.TestCase):
 
     def test_上限の判定はブロックの内と外を分けて測る(self):
         (self.pj / 'AGENTS.md').write_text('- 固有\n', encoding='utf-8')
-        self.run_tool('--target', 'codex')
+        self.run_tool('--target', 'codex', '--options', 'none')
         p = subprocess.run(['bash', str(self.pj / '.claude-rules' / 'check-limits.sh'), str(self.pj)],
                            capture_output=True, text=True, env=self.env)
         self.assertEqual(p.returncode, 0, p.stdout)
         self.assertIn('AGENTS.md（共通ルール）', p.stdout)
         self.assertRegex(p.stdout, r'AGENTS.md（PJ固有）\s+10B')
+
+
+    def test_初回に個人の運用を選ばないと止まり一覧を出す(self):
+        p = self.run_raw(str(self.pj))
+        self.assertEqual(p.returncode, 2)
+        self.assertIn('--options', p.stderr)
+        self.assertIn('autopush', p.stderr)
+        self.assertFalse((self.pj / 'AGENTS.md').exists())
+
+    def test_知らない運用の名前は止まる(self):
+        p = self.run_raw(str(self.pj), '--options', 'autopush,nosuch')
+        self.assertEqual(p.returncode, 2)
+        self.assertIn('nosuch', p.stderr)
+
+    def test_選んだ運用だけが入り必須の決まりは常に入る(self):
+        self.run_tool('--options', 'autopush')
+        text = self.read('AGENTS.md')
+        self.assertIn('選択 autopush。', text.splitlines()[0])
+        self.assertIn('**pushは既定で自動**', text)
+        self.assertIn('commitはユーザーの指示で行う', text)
+        self.assertNotIn('### 5.1 worktreeルール', text)
+        self.assertNotIn('禁止①', text)
+        self.assertNotIn('push先は§5.1', text)
+        for must in ('subjectは日本語50字目安', 'ファイルベースmemory', '禁止②', '## 8. 外部に出す文面', '## 9. 応答の書き方'):
+            self.assertIn(must, text)
+
+    def test_何も選ばないと代わりの決まりが入る(self):
+        self.run_tool('--options', 'none')
+        text = self.read('AGENTS.md')
+        self.assertIn('選択 なし。', text.splitlines()[0])
+        self.assertIn('pushはユーザーの指示があった時だけ', text)
+        self.assertNotIn('pushは既定で自動', text)
+        self.assertIn('**§5.2は全PJ必須**', text)
+
+    def test_2回目は前回の選択と書き込み先を引き継ぐ(self):
+        self.run_tool('--target', 'codex', '--options', 'worktree,toolname')
+        stale = self.read('AGENTS.md').replace('## 9. 応答の書き方', '## 9. 古い')
+        (self.pj / 'AGENTS.md').write_text(stale, encoding='utf-8')
+        p = self.run_raw(str(self.pj))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        head = self.read('AGENTS.md').splitlines()[0]
+        self.assertIn('embed-codex', head)
+        self.assertIn('選択 worktree,toolname。', head)
+        self.assertIn('## 9. 応答の書き方', self.read('AGENTS.md'))
+
+    def test_選び直すと入れ替わる(self):
+        self.run_tool('--options', 'all')
+        self.assertIn('### 5.1 worktreeルール', self.read('AGENTS.md'))
+        self.run_tool('--options', 'none')
+        self.assertNotIn('### 5.1 worktreeルール', self.read('AGENTS.md'))
+        self.assertEqual(self.read('AGENTS.md').count(BEGIN), 1)
+
+    def test_選べる運用の一覧(self):
+        p = self.run_raw('--list-options')
+        self.assertEqual(p.returncode, 0)
+        for name in ('autocommit', 'autopush', 'worktree', 'toolname', '常に入るもの'):
+            self.assertIn(name, p.stdout)
 
 
 if __name__ == '__main__':

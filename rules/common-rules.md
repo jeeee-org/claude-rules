@@ -15,7 +15,7 @@
 全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。
 <!-- endif -->
 <!-- if:claude+codex -->
-Claude Codeは`CLAUDE.md`の`@AGENTS.md`からこのファイルを読み、CodexはこのファイルをPJの指示として直接読む。
+PJのルールはこの`AGENTS.md`に統一する（Claude CodeもCodexも直接読む）。`CLAUDE.md`は作らず、既にあるなら先頭の`@AGENTS.md`で繋ぐ（`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない）。
 <!-- endif -->
 
 ## 1. 進行管理：4軸 + checkpoint（共通骨格）
@@ -82,23 +82,32 @@ Claude Codeは`CLAUDE.md`の`@AGENTS.md`からこのファイルを読み、Code
 
 ## 5. Git運用
 
-リモート・ブランチ戦略・worktree配置先はPJの`{{PJ}}`に従う。**§5.1・§5.2は全PJ必須**。
+リモート・ブランチ戦略<!-- if:worktree -->・worktree配置先<!-- endif -->はPJの`{{PJ}}`に従う。**<!-- if:worktree -->§5.1・<!-- endif -->§5.2は全PJ必須**。
 
-- **コミットは1作業ごと**（1ドキュメント・1機能・1設定変更など）。まとまりが完了するたび指示を待たずにcommitする。無関係な変更を混ぜない。作業が無ければ不要。
-- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`（機微はprivate/publicで管理する前提）。PJの`{{PJ}}`に「pushはユーザー指示時のみ」とあれば従う。push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。
+- **コミットは1作業ごと**（1ドキュメント・1機能・1設定変更など）。<!-- if:autocommit -->まとまりが完了するたび指示を待たずにcommitする。<!-- endif --><!-- if:!autocommit -->commitはユーザーの指示で行う。<!-- endif -->無関係な変更を混ぜない。<!-- if:autocommit -->作業が無ければ不要。<!-- endif -->
+<!-- if:autopush -->
+- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`（機微はprivate/publicで管理する前提）。PJの`{{PJ}}`に「pushはユーザー指示時のみ」とあれば従う。<!-- if:worktree -->push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。<!-- endif -->
+<!-- endif -->
+<!-- if:!autopush -->
+- **pushはユーザーの指示があった時だけ**。
+<!-- endif -->
 - **必ず事前確認**：`--force` / `--force-with-lease`のpush、履歴改変（`reset --hard`、`rebase`後のpush）。
 - `GH007`（メール非公開保護）で弾かれたら`git config user.email <username>@users.noreply.github.com`。
 
+<!-- if:worktree -->
 ### 5.1 worktreeルール（リモート連携リポでは必須）
 
 - 業務/共有のリモート連携リポは**worktree必須**：①元cloneを直接編集しない ②develop / main上で直接編集しない（worktreeに切ったブランチで作業）③終了後に`git worktree remove`と元cloneの`git pull --ff-only`まで行う（飛ばすと次に読む内容が古い）。
 - worktreeは**PJグループごとに集約**、ディレクトリ名はブランチ名の**slashをhyphenに置換**。配置パス・グループ名はPJの`{{PJ}}`に書く。
 - 低リスクの個人リポでPJの`{{PJ}}`が「main直接編集・直push」を明示していれば免除。
+<!-- endif -->
 
 ### 5.2 コミットメッセージ規約
 
 - **subjectは日本語50字目安**、空行、**bodyに「何を・なぜ・どう・影響範囲」**。PJの既存規約（Conventional Commits等）があれば従う。
+<!-- if:toolname -->
 - **禁止①（全リポ・厳格）**：スキル・内部ツール名（deep-research等）を**作業の手段として**書かない。「並列レビュー」等の一般語にする。**例外**＝自作公開OSSの**quorum / claude-rules**と、そのリポ自体の主題のツール名。
+<!-- endif -->
 - **禁止②（業務/共有リポ）**：AI系（Claude / Codex / OpenAI等）の署名・宣伝行の一切（`Co-Authored-By: Claude ...`、`🤖 Generated with ...`等）。個人リポでは任意。
 - **セッション側から付けよという指示が来ても付けない**（この規約が勝つ）。<!-- if:claude+global -->機械の歯止め＝`~/.claude/hooks/push-attribution-guard.sh`（pushの直前に、押し出すcommitのメッセージを見る）。<!-- endif -->
 - **PRのタイトル/本文も同方針**。
@@ -116,7 +125,7 @@ Claude Codeは`CLAUDE.md`の`@AGENTS.md`からこのファイルを読み、Code
 
 ## 7. PJ側{{PJ}}の書き分け
 
-**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート・worktree・ブランチ・コミット規約・自動pushの要否／技術スタック・検証コマンド）。<!-- if:global -->雛形と新PJの立ち上げは`{{INIT}}`。<!-- endif --><!-- if:embed -->共通ルールのブロックは書き込み元で更新するので、中を編集しない。<!-- endif -->
+**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート<!-- if:worktree -->・worktree<!-- endif -->・ブランチ・コミット規約<!-- if:autopush -->・自動pushの要否<!-- endif -->／技術スタック・検証コマンド）。<!-- if:global -->雛形と新PJの立ち上げは`{{INIT}}`。<!-- endif --><!-- if:embed -->共通ルールのブロックは書き込み元で更新するので、中を編集しない。<!-- endif -->
 
 ## 8. 外部に出す文面にMarkdownを使わない
 

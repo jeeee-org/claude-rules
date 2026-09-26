@@ -17,6 +17,8 @@ git clone git@github.com:jeeee-org/claude-rules.git
 cd claude-rules && ./install.sh
 ```
 
+AIに任せるなら、cloneしたこのリポでClaude Code / Codexを開いて「ルールを入れて」と言う（リポの`.claude/skills/`・`.agents/skills/`から`install-rules`スキルが見え、オプションを選択肢で案内する）。
+
 quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同。マーカー置換なので再実行は冪等）。
 
 ## 構成
@@ -28,7 +30,8 @@ quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同
 | `rules/global-rules.md` | **生成物**（`tools/build-rules.py`が正本から作る。直接編集しない）。`~/.claude/CLAUDE.md`のclaude-rulesブロックに注入される |
 | `rules/codex-global-rules.md` | **生成物**。`~/.codex/AGENTS.md`のcodex-rulesブロックへ注入される |
 | `tools/build-rules.py` | 正本から読み手ごとの版を作る。引数なしで生成物2枚を書き直し、`--check`で揃っているかだけを見る、`--variant <版>`で1つの版を標準出力へ。版は`claude-global` / `codex-global` / `embed-claude` / `embed-codex` / `embed-both`。`install.sh`が配る前に呼ぶ |
-| `tools/embed-rules.py` | 共通ルールを**PJのルールファイルへ書き込む**（グローバルを入れない相手へ配る時）。使い方は「PJへ共通ルールを書き込む」 |
+| `tools/embed-rules.py` | 共通ルールを**PJのルールファイルへ書き込む**（グローバルを入れない相手へ配る時）。個人の運用をPJごとに選ぶ。使い方は「PJへ共通ルールを書き込む」 |
+| `skills/install-rules/` | **正本**。共通ルールの導入・更新・PJへの書き込みを、選択肢で案内しながら行うスキル。`~/.claude/skills/`と`~/.codex/skills/`へコピーされ、リポの`.claude/skills/`・`.agents/skills/`からもsymlinkで見える（cloneしただけで使える） |
 | `skills/init-rules/` | **正本**。新規/既存PJに4軸 + checkpoint構成を立ち上げるスキル。`~/.claude/skills/init-rules`へコピーされる |
 | `skills/migrate-rules/` | **正本**。既存PJを記録ルールの改訂（2026-09-12〜）に揃えるスキル。checkpointの移動と改名・`REQUIREMENTS.md`の新設と進行中の作業カードの立ち上げ・決定/未決/ADRの振り分け・`NOTES.md`の整理・PJの`CLAUDE.md`の書き直しを、ユーザーの判断を挟みながら何も落とさずに行う。**過去の「次にやること」から落ちた作業を拾う**手順を含む。判断の要らない部分は`tools/migrate-checkpoints.py`・`tools/check-moved-lines.py`・`tools/fix-spacing.py`を呼ぶ（cloneの場所は`init-rules`の`IMPROVEMENTS.md`のsymlinkから辿る）。`~/.claude/skills/migrate-rules`へコピーされる。Codex版は無い |
 | `skills/codex-init-rules/` | Codex版。`~/.codex/skills/init-rules`へコピーされ、PJ固有指示は`AGENTS.md`に生成する |
@@ -125,12 +128,19 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 
 ## PJへ共通ルールを書き込む（グローバルを入れない相手へ配る）
 
+**入れる時はAIに頼めばよい**——このリポ（またはグローバルを入れたPC）でClaude Code / Codexに「ルールを入れて」「このPJに共通ルールを書き込んで」と言うと、`install-rules`スキルが入れ方・読み手・個人の運用を選択肢で聞いてから下のコマンドを組み立てる。オプションを覚える必要は無い。
+
+- **個人の運用はPJごとに選ぶ**：commitを指示を待たずに行う（`autocommit`）・pushを自動で行う（`autopush`）・worktreeで作業する（`worktree`）・内部ツール名を書かない（`toolname`）。選ばないと代わりの決まり（「pushはユーザーの指示があった時だけ」等）が入るか、その決まりが無くなる。選択はマーカー行に残り、更新で引き継ぐ。
+- **常に入る（選べない）**：コミットの書き方・memory不使用・AI署名なし・外に出す文面でMarkdownを使わない・応答の書き方。
+- グローバル版には個人の運用が全部入る。
+
 グローバルに入れる（`install.sh`）のが基本。**このリポを入れられない相手・Codexで使う相手へPJ単体で配る時だけ**、共通ルールをPJ側へ重ねて書き込む。
 
 ```bash
-python3 <claude-rules>/tools/embed-rules.py <PJ>                  # 既定 --target both
-python3 <claude-rules>/tools/embed-rules.py <PJ> --target claude   # Claudeだけの相手
-python3 <claude-rules>/tools/embed-rules.py <PJ> --target codex    # Codexだけの相手
+python3 <claude-rules>/tools/embed-rules.py --list-options                     # 選べる個人の運用
+python3 <claude-rules>/tools/embed-rules.py <PJ> --options autopush,worktree   # 初回（選択は必須。none / all も可）
+python3 <claude-rules>/tools/embed-rules.py <PJ> --target claude --options none # Claudeだけの相手
+python3 <claude-rules>/tools/embed-rules.py <PJ>                  # 2回目以降: 前回の選択と書き込み先のまま最新へ
 python3 <claude-rules>/tools/embed-rules.py <PJ> --dry-run         # 変わるファイルだけ出す
 python3 <claude-rules>/tools/embed-rules.py <PJ> --check           # 書き込んだ版が最新か（古ければ exit 1）
 python3 <claude-rules>/tools/embed-rules.py <PJ> --remove          # 書き込んだものを取り除く
@@ -138,12 +148,12 @@ python3 <claude-rules>/tools/embed-rules.py <PJ> --remove          # 書き込�
 
 | --target | 書き込む先 | 読まれ方 |
 |---|---|---|
-| `both`（既定） | `AGENTS.md`の先頭に共通ルール、`CLAUDE.md`の先頭に`@AGENTS.md` | Codexは`AGENTS.md`を直接、Claudeは`CLAUDE.md`の読み込みで |
+| `both`（既定） | `AGENTS.md`の先頭に共通ルール。PJのルールは`AGENTS.md`に統一し、`CLAUDE.md`は作らない（既にある時だけ先頭に`@AGENTS.md`） | どちらも`AGENTS.md`を直接読む（Claude Codeはv2.1.277以降） |
 | `claude` | `CLAUDE.md`の先頭 | Claudeだけ |
 | `codex` | `AGENTS.md`の先頭 | Codexだけ |
 
 - 共通ルールはマーカー（`claude-rules:embed:begin` / `end`）で囲み、マーカー行に版（正本のcommit）と種類を刻む。**更新は同じコマンドをもう一度**——マーカー間だけを差し替え、外に書いたPJ固有の指示には触らない。受け取った相手は中を編集せず、PJ固有の指示はブロックの下へ書く。
-- `both`で`CLAUDE.md`を`@AGENTS.md`で繋ぐのは、**PJに`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない**ため（`NOTES.md`「配布の仕組み」）。読み込みならClaudeの版を問わず載る。`CLAUDE.md`にPJ固有の指示が残っているとCodexには届かないので、道具が知らせる（移すのは手で）。
+- `both`で既存の`CLAUDE.md`にだけ`@AGENTS.md`を足すのは、**PJに`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない**ため（`NOTES.md`「配布の仕組み」）。`CLAUDE.md`にPJ固有の指示が残っているとCodexには届かないので、道具が知らせる（`AGENTS.md`へ移して`CLAUDE.md`を消せば統一が完了する）。
 - 本文は相手のホームにある物を指さない。グローバル版にある記録の関門・AI帰属行の関門・`/init-rules`への言及は外れ、上限の判定は`<PJ>/.claude-rules/check-limits.sh`（道具が一緒に置く）を指す。`check-limits.sh`はマーカー間をグローバルの上限（14,336B）、外をPJの上限（6,144B）で分けて測る。
 - **自分のPC（グローバルも入れてある）で書き込んだPJを開くと、同じルールが二重に読まれる。** 道具と`check-limits.sh`が知らせる。配る用のブランチやコピーで書き込むのが素直。
 - commitはしない。

@@ -14,9 +14,12 @@
 
 正本の書き方:
   {{名前}}                                  版ごとの語（VARIANTS の vars）に置き換わる
-  <!-- if:条件 -->…<!-- endif -->            条件が立つ版にだけ残る。行の途中にも置ける（入れ子は不可）
-  条件は印（claude / codex / global / embed）で書く。`,` = または、`+` = かつ、`!` = でない
-  例 if:claude+global（Claudeのグローバルだけ）、if:!embed、if:claude,codex
+  <!-- if:条件 -->…<!-- endif -->            条件が立つ版にだけ残る。行の途中にも置ける
+                                            （入れ子は「行単位のブロックの中に行中の条件」だけ可）
+  条件は印で書く。`,` = または、`+` = かつ、`!` = でない
+    読み手と置き場: claude / codex / global / embed
+    個人の運用（OPTIONS）: グローバル版では全部立つ。PJ書き込み版では入れる時に選んだものだけ立つ
+  例 if:claude+global（Claudeのグローバルだけ）、if:!embed、if:!autopush
 """
 from __future__ import annotations
 
@@ -65,6 +68,16 @@ VARIANTS = {
     },
 }
 
+# 個人の運用。PJへ書き込む時にPJごとに選ぶ（グローバル版は全部入り）。
+# 選ばなかった時は、正本の <!-- if:!名前 --> の文（代わりの決まり）が入るか、その決まりが無くなる。
+# コミットの書き方・memory不使用・AI署名なし・§8・§9はここに入れない（全版で必須）
+OPTIONS = {
+    'autocommit': ('commitを指示を待たずに行う', '§5。選ばないと「commitはユーザーの指示で行う」'),
+    'autopush': ('pushを事前承認なしで自動で行う', '§5。選ばないと「pushはユーザーの指示があった時だけ」'),
+    'worktree': ('業務・共有リポではworktreeで作業する', '§5.1。選ばないと§5.1ごと無くなる'),
+    'toolname': ('コミット・PRに内部ツール名を作業の手段として書かない', '§5.2の禁止①。選ばないと無くなる'),
+}
+
 # install.sh が注入に使う生成物。マーカー名は既存の ~/.claude/CLAUDE.md・~/.codex/AGENTS.md と揃える
 GLOBAL_OUTPUTS = {
     'claude-global': (ROOT / 'rules' / 'global-rules.md', 'claude-rules'),
@@ -82,11 +95,17 @@ def holds(cond: str, flags: set[str]) -> bool:
     return any(all(atom(a) for a in term.split('+')) for term in cond.split(','))
 
 
-def render(variant: str, source: str | None = None) -> str:
-    """版の本文（マーカー行を除く）を返す。"""
+def render(variant: str, source: str | None = None, options: set[str] | None = None) -> str:
+    """版の本文（マーカー行を除く）を返す。options はPJ書き込み版で選んだ個人の運用（グローバル版は全部）。"""
     spec = VARIANTS[variant]
     text = SOURCE.read_text(encoding='utf-8') if source is None else source
-    keep = lambda m: m.group(2) if holds(m.group(1), spec['flags']) else ''
+    if 'global' in spec['flags']:
+        options = set(OPTIONS)
+    unknown = set(options or ()) - set(OPTIONS)
+    if unknown:
+        raise KeyError(f'知らない個人の運用: {", ".join(sorted(unknown))}')
+    flags = spec['flags'] | set(options or ())
+    keep = lambda m: m.group(2) if holds(m.group(1), flags) else ''
     text = _BLOCK.sub(keep, text)
     text = _INLINE.sub(keep, text)
 
