@@ -18,12 +18,7 @@
 
 > 依頼されたらここへカードを立ててから動く。**終わったら消して`PROGRESS.md`の完了へ1行**。
 
-### 共通ルールのPJ書き込み（2026-09-26起票）
-- **何をする** = グローバルルールを使わずに他の人へ配る時のため、共通ルールを個別PJのルールファイルへ重ねて書き込む版をオプションで作る。前提として、Claude用とCodex用の共通ルールを両方から読める1枚に揃える
-- **叶っている状態** = 共通ルールの正本が1枚になり、そこからClaude用・Codex用・PJ書き込み用が生成でき、PJへ書き込む道具がテスト付きで動き、READMEに使い方がある
-- **現在地**（2026-09-26）= 着手。正本の1枚化から
-- **待ち** = 他の人へ配る版から個人の方針（自動push等）を外すか（ユーザー判断）
-- **作業ログ** = `checkpoints/*-共通ルールのPJ書き込み-*`（0件）
+(なし)
 
 ## 要求
 
@@ -31,31 +26,29 @@
 
 ### 追加要求: `.claude`と`.codex`の統一（2026-09-20新設）
 
-- **何に困っているか** = 同じ内容の共通ルールを`rules/global-rules.md`と`rules/codex-global-rules.md`の2枚、`init-rules`を`skills/init-rules`と`skills/codex-init-rules`の2枚で保守している。「片方を変えたらもう片方も見る」が常時コスト。
+- **何に困っているか** = 同じ内容のものを読み手ごとに2枚ずつ保守する常時コスト。**共通ルールは2026-09-26に解消**——正本を`rules/common-rules.md`の1枚にし、Claude用・Codex用・PJ書き込み用を`tools/build-rules.py`で作る（文体はClaude側、読み手で違う所は`{{語}}`と`<!-- if:… -->`）。**残るのは`init-rules`の2枚**（`skills/init-rules`と`skills/codex-init-rules`）と、置き場が読み手ごとに分かれていること。
 - **層ごとに状況が違う**（ここを混ぜると判断を誤る）:
   - **PJ層のルール = 解決済み**。2026-09-18のv2.1.277でClaude CodeがAGENTS.mdを直接読むようになった。
   - **グローバル層のルール = 未解決**。`~/.codex/AGENTS.md`はClaudeの探索経路（作業dirとその祖先）の外で、今後も読まれる見込みは無い。agents.md本体のissue #91が共通の置き場`~/.config/agents/AGENTS.md`を提案中だが**提案段階**。
   - **skills = フォーマットは決着済み、置き場は共通パスがあるがClaudeが読まない**。規格（Agent Skills Open Standard、2025-12公開、Linux Foundation AAIF管理）は**置き場を規定せず**中身だけを定める。共通の慣習は`<project>/.agents/skills/`と`~/.agents/skills/`で、**Codexは既にこちらへ移行済み**（ユーザー層は`$HOME/.agents/skills`）。**Claude Codeは走査しない**（2026-09-20実測・公式ドキュメントにも記載なし）。要望はanthropics/claude-code #66352（ユーザー層）と#31005に実在。
-- **選択肢**（2026-09-20時点。どれも未着手）:
+- **選択肢**（2026-09-20時点。Bは2026-09-26に配り方の選択肢として実装＝`tools/embed-rules.py`。全面移行はしない）:
   - A. 標準を待つ。グローバルルールは`~/.config/agents/AGENTS.md`（提案段階＋Codex移行が要る）、skillsはClaude Codeが`.agents/skills/`を拾うかどうか。**skillsのユーザー層が最も軽い要求**（走査先を1つ足すだけ・優先規則は実装ガイドに既出・利用者自身のホームなので信頼の問題が無い）。時期は不明。
   - B. グローバルCLAUDE.mdをやめ、内容をPJ層へ降ろす。ベンダ協力が不要で**今日できる唯一の道**。PJ側は`CLAUDE.md`をやめて`AGENTS.md`1本にする必要がある。
   - C. skillsだけ先に突き合わせる。対象は実質`init-rules`1組（`migrate-rules`はClaude専用、`codex-triage`はCodex専用で突き合わせ相手が無い）。**規模は1セッション前半**——203行の差分は対立ではなく片側にしか無い雛形で、残る判断は「雛形を埋め込む形（11,601B側）に寄せるか散文（3,692B側）に寄せるか」の1つだけ。
-- **どの道でも消えない作業** = 中身の突き合わせ。`rules/*`が218行、`init-rules`が203行ずれている。**置き場が1つになっても文言は統一されない**——本文の「PJのルールファイル」はClaudeなら`CLAUDE.md`、Codexなら`AGENTS.md`を指し、読み手は実行時に変わる。変数置換にするか、読み手非依存の書き方へ倒すかの判断が要る。
-- **効く含意**（2026-09-20修正）= 当初「Cは条件付きブロックの記法を安く決められる実験場」と書いたが、組んでみると**`init-rules`に条件付きブロックはほぼ要らない**（真にClaude専用なのは`currentDate`への言及1か所のみ。残りは変数4つで片付く）。Cで試せるのは**変数置換の機構だけ**で、条件付きブロックが本当に要るのは`rules/*`のほう（§3のサブエージェント関門、スキルのパス）。Cは練習にならない。
+- **どの道でも消えない作業** = 中身の突き合わせ。`rules/*`は2026-09-26に済んだ（変数置換と条件ブロックで1枚化）。`init-rules`は203行ずれたまま。
+- **効く含意** = `init-rules`に条件付きブロックはほぼ要らない（真にClaude専用なのは`currentDate`への言及1か所。残りは変数4つ）。Cをやるなら`tools/build-rules.py`の仕掛けをそのまま流用できる。
 - **詳細**（実測手順・各社の到達点・完成形の素案）は`checkpoints/2026-09-20-統一の見通し-層ごとの状況.md`、挙動の要点は`NOTES.md`「配布の仕組み」。
 
 ## やること / バックログ
 - 既存PJを、開いた時に`/migrate-rules`で記録ルールの改訂に揃える（checkpointの移動・`REQUIREMENTS.md`の新設・ADR節の振り分け・`NOTES.md`の整理）。checkpointを移すかはPJごとにユーザーが決める（2026-09-14時点で未移行は17PJ。kakeiboとdiscは移行済み）。
 - 他PCでclaude-rulesの**cloneを取り直して**`./install.sh`（2026-09-17にリポを作り直したため。消す前に`IMPROVEMENTS.md`への未pushの追記を確認する）。quorumは`git pull && ./install.sh`で、installがトリアージブロックの残骸を取り除く。`settings.json`の分類フック登録は各PCで手で外す。
 - ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
-- `rules/codex-global-rules.md`の圧縮（残量3,059Bで急がない。Claude側と同じ観点で他所と重複する語を畳む）。
 
 ## 未決事項
 - [ ] 常時トリアージ規則を廃止した今、`hooks/triage-classifier.sh`・`hooks/triage-rubric.txt`・`skills/codex-triage/`（opt-inの分類ツール）を配布し続けるか。
 - [ ] `migrate-rules`のCodex版を作るか（2026-09-14にClaude版だけ作った。Codexをメインに使うPJで同じ移行の需要があるか未確認）。**統一の要求と連動**——1枚にするなら作る作らないの問いが消える。
-- [ ] 統一のどの道を採るか（要求のA / B / C、または当面やらない）。
-- [ ] 条件付きブロックの記法（`<!-- only:claude -->`など）。A・B・Cのどれでも要る。
-- [ ] 2枚の文言をどちらの文体へ寄せるか。骨格は同じで書き方だけが違う（`rules/*`は太字の箇条書き対散文、表の列名も「いつ読む／いつ書く」対「読む時／書く時」）。
+- [ ] 他の人へPJごと配る版から、個人の方針（自動push・worktree必須・日本語のコミット規約・禁止①の例外のOSS名・memory不使用・§8・§9）を外すか。外すなら`<!-- if:… -->`の印と`tools/embed-rules.py`の切り替えで足せる。
+- [ ] `init-rules`の2枚も共通の正本から作るか（要求のC。`tools/build-rules.py`の仕掛けを流用できる）。
 - [ ] Codexの`AGENTS.md`での`@path`参照がホーム直下（`@~/.claude/...`）まで届くか。届けばBのコピー量が「全文×N」から「1行×N」になる。2026-09-20は実測できず（Codexが`gpt-5.6-sol`で弾かれた）。
 - [ ] `install.sh`のCodexへのskills配り先を`~/.codex/skills/`から`~/.agents/skills/`へ移すか。手元のCodex 0.153.4は両方の文字列を持ち現状は生きているが、公式が挙げるのは`.agents`側だけ。移すとClaude Codeからは見えないままなので、Cを採るかどうかと連動する。
 - [ ] Cで「雛形を埋め込む形」と「散文」のどちらへ寄せるか。埋め込みはCodexにも雛形本文が渡り、散文は両方軽くなる代わりにClaude側が今の雛形を失う。

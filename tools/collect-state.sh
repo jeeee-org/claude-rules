@@ -15,7 +15,7 @@ CX="${CODEX_HOME:-$HOME/.codex}"
 OUT="$HOME/claude-rules-state.txt"
 
 # 正本として比較する対象（install.sh が配るものと対応）
-FILES="rules/global-rules.md rules/codex-global-rules.md install.sh
+FILES="rules/common-rules.md rules/global-rules.md rules/codex-global-rules.md install.sh
 hooks/triage-classifier.sh hooks/codex-triage.sh hooks/triage-rubric.txt
 skills/init-rules/SKILL.md skills/codex-init-rules/SKILL.md
 skills/codex-triage/SKILL.md skills/codex-triage/agents/openai.yaml

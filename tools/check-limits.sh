@@ -44,11 +44,34 @@ echo "— グローバル（全セッションでロード）"
 chk "${CC/#$HOME/\~}/CLAUDE.md" "$CC/CLAUDE.md" "$G" B
 chk "${CX/#$HOME/\~}/AGENTS.md" "$CX/AGENTS.md" "$G" B
 
+# 共通ルールをPJへ書き込んだ形（tools/embed-rules.py）では、マーカー間はグローバルの上限で、
+# 外のPJ固有の分だけをPJの上限で測る（まとめて測ると書き込んだだけで必ず超過する）。
+EMBED=0
+chk_pj() { # ラベル ファイル
+  local label="$1" f="$2" tmp
+  [ -f "$f" ] || return 0
+  if grep -q 'claude-rules:embed:begin' "$f"; then
+    EMBED=1
+    tmp="$(mktemp -d)"
+    awk '/claude-rules:embed:begin/{f=1} f{print} /claude-rules:embed:end/{f=0}' "$f" > "$tmp/common"
+    awk '/claude-rules:embed:begin/{f=1} !f{print} /claude-rules:embed:end/{f=0}' "$f" > "$tmp/own"
+    chk "$label（共通ルール）" "$tmp/common" "$G" B
+    chk "$label（PJ固有）" "$tmp/own" "$P" B
+    rm -rf "$tmp"
+  else
+    chk "$label" "$f" "$P" B
+  fi
+}
+
 echo "— PJ: ${PJ/#$HOME/\~}"
-chk "CLAUDE.md"   "$PJ/CLAUDE.md"   "$P"  B
-chk "AGENTS.md"   "$PJ/AGENTS.md"   "$P"  B
+chk_pj "CLAUDE.md" "$PJ/CLAUDE.md"
+chk_pj "AGENTS.md" "$PJ/AGENTS.md"
 chk "PROGRESS.md" "$PJ/PROGRESS.md" "$PB" B
 chk "PROGRESS.md (行数)" "$PJ/PROGRESS.md" "$PL" 行
+
+if [ "$EMBED" = 1 ] && { grep -qs 'claude-rules:begin' "$CC/CLAUDE.md" || grep -qs 'codex-rules:begin' "$CX/AGENTS.md"; }; then
+  echo "△ 共通ルールがグローバルとこのPJの両方にある（このPCでは二重に読まれる。配る先では問題ない）"
+fi
 
 if [ "$NG" -ne 0 ]; then
   echo "→ 超過あり。\"cut bytes, not meaning\" で圧縮する（畳める記録は checkpoint へ）。"

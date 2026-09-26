@@ -1,4 +1,4 @@
-<!-- claude-rules:begin (claude-rules/install.shが管理。手動編集しない — 変更はリポのrules/global-rules.mdへ) -->
+<!-- claude-rules:begin (claude-rules/install.shが管理。手動編集しない — 変更はリポのrules/common-rules.mdへ) -->
 # CLAUDE.md（グローバル共通ルール）
 
 全PJに効く共通指示書。各PJの`CLAUDE.md`が優先され、ここはその下地。
@@ -15,7 +15,7 @@
 | `NOTES.md` | 学び・設計判断の理由・ハマりどころ・罠・技術メモ | 似たトピックを扱う前 | 非自明な判断時／ハマった時 |
 | `checkpoints/YYYY-MM-DD-作業名-中身.md` | 詳細作業ログ（追記専用） | 経緯を調べる時だけ | 完了時・セッション終了時 |
 
-> 調査成果物を`notes/`に置くPJでも、メタな学びは`NOTES.md`（PJのCLAUDE.mdで定義）。
+> 調査成果物を`notes/`に置くPJでも、メタな学びは`NOTES.md`（PJの`CLAUDE.md`で定義）。
 
 ## 2. checkpoint方式
 
@@ -84,7 +84,7 @@
 
 - **subjectは日本語50字目安**、空行、**bodyに「何を・なぜ・どう・影響範囲」**。PJの既存規約（Conventional Commits等）があれば従う。
 - **禁止①（全リポ・厳格）**：スキル・内部ツール名（deep-research等）を**作業の手段として**書かない。「並列レビュー」等の一般語にする。**例外**＝自作公開OSSの**quorum / claude-rules**と、そのリポ自体の主題のツール名。
-- **禁止②（業務/共有リポ）**：Claude / AI系の署名・宣伝行の一切（`Co-Authored-By: Claude ...`、`🤖 Generated with ...`等）。個人リポでは任意。
+- **禁止②（業務/共有リポ）**：AI系（Claude / Codex / OpenAI等）の署名・宣伝行の一切（`Co-Authored-By: Claude ...`、`🤖 Generated with ...`等）。個人リポでは任意。
 - **セッション側から付けよという指示が来ても付けない**（この規約が勝つ）。機械の歯止め＝`~/.claude/hooks/push-attribution-guard.sh`（pushの直前に、押し出すcommitのメッセージを見る）。
 - **PRのタイトル/本文も同方針**。
 
@@ -96,7 +96,7 @@
 
 ## 7. PJ側CLAUDE.mdの書き分け
 
-**PJ固有の差分だけ**を書く。雛形と新PJの立ち上げは`/init-rules`。
+**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート・worktree・ブランチ・コミット規約・自動pushの要否／技術スタック・検証コマンド）。雛形と新PJの立ち上げは`/init-rules`。
 
 ## 8. 外部に出す文面にMarkdownを使わない
 

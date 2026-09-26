@@ -2,6 +2,7 @@
 # claude-rules をローカルの Claude Code / Codex 設定に配置する。
 #   rules/global-rules.md       -> $CLAUDE_CONFIG_DIR/CLAUDE.md
 #   rules/codex-global-rules.md -> $CODEX_HOME/AGENTS.md
+#   （2枚とも rules/common-rules.md から tools/build-rules.py で作る生成物。先に作り直してから配る）
 #   skills/* と hooks/*         -> 各環境の対応ディレクトリ
 #   IMPROVEMENTS.md            -> 各環境の skills/init-rules/ から正本への symlink
 # 配置先を変えたい場合:
@@ -96,6 +97,14 @@ warn_if_not_upstream_clone() {
   fi
 }
 warn_if_not_upstream_clone
+
+# 共通ルールの正本は rules/common-rules.md。Claude用・Codex用の2枚はそこから作る生成物なので、
+# 配る前に作り直す（正本だけ直して生成を忘れた、を配る側で拾う。揃っていれば何も書かない）
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$SRC_DIR/tools/build-rules.py"
+else
+  echo "※ python3が無いので共通ルールの生成を飛ばし、コミット済みの生成物をそのまま配ります" >&2
+fi
 
 RULES_FILE="$SRC_DIR/rules/global-rules.md"
 TARGET_MD="$CLAUDE_CONFIG_DIR/CLAUDE.md"

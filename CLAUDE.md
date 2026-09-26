@@ -7,15 +7,14 @@ Claude Codeへのプロジェクト指示書。**会話開始時に必ず読む�
 
 - Claude Code / Codexの**グローバル共通ルールとinit-rulesスキルを複数PCへ配布・同期する**リポ。`install.sh` +マーカーブロック方式（quorumと同じ）。
 - **最大のリスク＝正本の取り違え**。`~/.claude/CLAUDE.md`と`~/.codex/AGENTS.md`の**マーカーブロック内を直接編集しない**（次回installで消える）。編集するのは常にこのリポ側：
-  - Claude共通ルール → `rules/global-rules.md`
-  - Codex共通ルール → `rules/codex-global-rules.md`（Claude側と自動同期しない。**片方を変えたらもう片方も見る**）
-  - スキル → `skills/<name>/SKILL.md`
+  - 共通ルール → `rules/common-rules.md`（Claude・Codex・PJ書き込みの共通の正本。`rules/global-rules.md` / `rules/codex-global-rules.md`は`tools/build-rules.py`の生成物で、**直接編集しない**。読み手で違う所は`{{語}}`と`<!-- if:… -->`で書く）
+  - スキル → `skills/<name>/SKILL.md`（`init-rules`はClaude版とCodex版の2枚のまま。**片方を変えたらもう片方も見る**）
 - ルールを変えたら必ず`./install.sh`でローカル反映してからコミットする（README「ルールを変更するとき」の手順）。
 - **自分自身に効くルールを書き換えるリポ**である点に注意。変更は次セッション以降の全PJの挙動を変える。
 
 ## サイズ上限（グローバル§2の実務メモ）
 
-`~/.claude/CLAUDE.md`の上限は**14,336B**（1024系）。2026-09-15にquorumのトリアージブロックを廃止したので、いまはclaude-rulesブロックだけが載る。`rules/global-rules.md`に追記したら`./install.sh`末尾の`tools/check-limits.sh`の判定を必ず確認する。
+`~/.claude/CLAUDE.md`の上限は**14,336B**（1024系）。2026-09-15にquorumのトリアージブロックを廃止したので、いまはclaude-rulesブロックだけが載る。`rules/common-rules.md`に追記したら`./install.sh`末尾の`tools/check-limits.sh`の判定を必ず確認する（Claude版・Codex版・PJ書き込み版の3つとも14,336B以内。`tools/tests/test_build_rules.py`でも見る）。
 
 ## 4軸ドキュメント
 

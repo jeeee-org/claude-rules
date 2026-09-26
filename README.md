@@ -24,8 +24,11 @@ quorumを使うPCでは続けてquorumの`install.sh`も実行する（順不同
 | パス | 役割 |
 |---|---|
 | `IMPROVEMENTS.md` | **改善案メモの正本**。共通ルール・配布の仕組みについて使いながら気づいたことを溜める。`install.sh`がClaude / Codex両方の`skills/init-rules/IMPROVEMENTS.md`からここへsymlinkを張るので、**実行時の追記はそのままgit管理下のこのファイルへ入り、再インストールの`rm -rf`でも消えない**。並びは古い順・末尾追記（他PCのcloneとのmergeが素直になる）。quorumと同じ方式 |
-| `rules/global-rules.md` | **正本**。`~/.claude/CLAUDE.md`のclaude-rulesブロックに注入される共通骨格（§1進行管理 / §2 checkpoint方式・数値上限 / §3進行ルール / §4書き分け / §5 Git / §6 memory不使用 / §7 PJ側CLAUDE.mdの書き分け / §8外部文面でMarkdown不使用 / §9応答の書き方＝毎回の1行・英数字と日本語の間に半角スペースを入れない・記号だけで済ませない） |
-| `rules/codex-global-rules.md` | **Codex用の独立した正本**。`~/.codex/AGENTS.md`のcodex-rulesブロックへ注入 |
+| `rules/common-rules.md` | **共通ルールの唯一の正本**（2026-09-26〜）。Claude・Codex・PJ書き込みのどれでも読める1枚で、読み手ごとに違う語は`{{名前}}`、片方にだけ要る文は`<!-- if:claude -->…<!-- endif -->`で書く（条件の印は`claude` / `codex` / `global` / `embed`。`,`＝または・`+`＝かつ・`!`＝でない）。中身は§1進行管理 / §2 checkpoint方式・数値上限 / §3進行ルール / §4書き分け / §5 Git / §6 memory不使用 / §7 PJ側の書き分け / §8外部文面でMarkdown不使用 / §9応答の書き方 |
+| `rules/global-rules.md` | **生成物**（`tools/build-rules.py`が正本から作る。直接編集しない）。`~/.claude/CLAUDE.md`のclaude-rulesブロックに注入される |
+| `rules/codex-global-rules.md` | **生成物**。`~/.codex/AGENTS.md`のcodex-rulesブロックへ注入される |
+| `tools/build-rules.py` | 正本から読み手ごとの版を作る。引数なしで生成物2枚を書き直し、`--check`で揃っているかだけを見る、`--variant <版>`で1つの版を標準出力へ。版は`claude-global` / `codex-global` / `embed-claude` / `embed-codex` / `embed-both`。`install.sh`が配る前に呼ぶ |
+| `tools/embed-rules.py` | 共通ルールを**PJのルールファイルへ書き込む**（グローバルを入れない相手へ配る時）。使い方は「PJへ共通ルールを書き込む」 |
 | `skills/init-rules/` | **正本**。新規/既存PJに4軸 + checkpoint構成を立ち上げるスキル。`~/.claude/skills/init-rules`へコピーされる |
 | `skills/migrate-rules/` | **正本**。既存PJを記録ルールの改訂（2026-09-12〜）に揃えるスキル。checkpointの移動と改名・`REQUIREMENTS.md`の新設と進行中の作業カードの立ち上げ・決定/未決/ADRの振り分け・`NOTES.md`の整理・PJの`CLAUDE.md`の書き直しを、ユーザーの判断を挟みながら何も落とさずに行う。**過去の「次にやること」から落ちた作業を拾う**手順を含む。判断の要らない部分は`tools/migrate-checkpoints.py`・`tools/check-moved-lines.py`・`tools/fix-spacing.py`を呼ぶ（cloneの場所は`init-rules`の`IMPROVEMENTS.md`のsymlinkから辿る）。`~/.claude/skills/migrate-rules`へコピーされる。Codex版は無い |
 | `skills/codex-init-rules/` | Codex版。`~/.codex/skills/init-rules`へコピーされ、PJ固有指示は`AGENTS.md`に生成する |
@@ -120,6 +123,31 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 - **2026-09-25**: この日の`04128f3`と`397b2d7`の間に`install.sh`を走らせたPCは、`~/.claude/settings.json`の`env`に`CLAUDE_CODE_ENABLE_TODO_TOOLS`が残る（to-doは全体でなくリポ単位へ変えたため）。`jq '.env' ~/.claude/settings.json`で見て、あれば消す。業務のPCでループのひな型を入れたリポは、4の`--update`で上げる（同日に不具合の修正・範囲の検査・昇格の仕組み・歯止めが入った。手で足した上限や起票の決まりは、ひな型側にも入ったので重複を見て整理する）
 - **2026-09-17**: リポを作り直したので、それ以前のcloneは`git pull`が進まない。**cloneを取り直す**（消す前に`IMPROVEMENTS.md`の未pushの追記を確認）
 
+## PJへ共通ルールを書き込む（グローバルを入れない相手へ配る）
+
+グローバルに入れる（`install.sh`）のが基本。**このリポを入れられない相手・Codexで使う相手へPJ単体で配る時だけ**、共通ルールをPJ側へ重ねて書き込む。
+
+```bash
+python3 <claude-rules>/tools/embed-rules.py <PJ>                  # 既定 --target both
+python3 <claude-rules>/tools/embed-rules.py <PJ> --target claude   # Claudeだけの相手
+python3 <claude-rules>/tools/embed-rules.py <PJ> --target codex    # Codexだけの相手
+python3 <claude-rules>/tools/embed-rules.py <PJ> --dry-run         # 変わるファイルだけ出す
+python3 <claude-rules>/tools/embed-rules.py <PJ> --check           # 書き込んだ版が最新か（古ければ exit 1）
+python3 <claude-rules>/tools/embed-rules.py <PJ> --remove          # 書き込んだものを取り除く
+```
+
+| --target | 書き込む先 | 読まれ方 |
+|---|---|---|
+| `both`（既定） | `AGENTS.md`の先頭に共通ルール、`CLAUDE.md`の先頭に`@AGENTS.md` | Codexは`AGENTS.md`を直接、Claudeは`CLAUDE.md`の読み込みで |
+| `claude` | `CLAUDE.md`の先頭 | Claudeだけ |
+| `codex` | `AGENTS.md`の先頭 | Codexだけ |
+
+- 共通ルールはマーカー（`claude-rules:embed:begin` / `end`）で囲み、マーカー行に版（正本のcommit）と種類を刻む。**更新は同じコマンドをもう一度**——マーカー間だけを差し替え、外に書いたPJ固有の指示には触らない。受け取った相手は中を編集せず、PJ固有の指示はブロックの下へ書く。
+- `both`で`CLAUDE.md`を`@AGENTS.md`で繋ぐのは、**PJに`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない**ため（`NOTES.md`「配布の仕組み」）。読み込みならClaudeの版を問わず載る。`CLAUDE.md`にPJ固有の指示が残っているとCodexには届かないので、道具が知らせる（移すのは手で）。
+- 本文は相手のホームにある物を指さない。グローバル版にある記録の関門・AI帰属行の関門・`/init-rules`への言及は外れ、上限の判定は`<PJ>/.claude-rules/check-limits.sh`（道具が一緒に置く）を指す。`check-limits.sh`はマーカー間をグローバルの上限（14,336B）、外をPJの上限（6,144B）で分けて測る。
+- **自分のPC（グローバルも入れてある）で書き込んだPJを開くと、同じルールが二重に読まれる。** 道具と`check-limits.sh`が知らせる。配る用のブランチやコピーで書き込むのが素直。
+- commitはしない。
+
 ## ルールを変更するとき
 
 **編集するPCはここ（claude-rulesのcloneを持つPC）に限る。** 他PCで気づいた改善は、そのPCの改善メモ（`IMPROVEMENTS.md`等）に書き足すところまでにして、**正本の編集はこのPCで行う**。生成物（`~/.claude/CLAUDE.md`）を直接編集しないのと同じ理由で、正本を複数のPCから触ると版が分岐する。
@@ -128,9 +156,9 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 
 配布先へ**取り込まれた複製**（他リポの`bundled/`配下など）で`install.sh`を走らせると、`rules/*.md`がpull専用である旨をstderrに出す（`rules/`に未コミットの変更があればさらに強く警告する）。止めはしないので、出たら編集をやめて改善メモへ回す。
 
-1.**このリポの`rules/global-rules.md`（または`skills/init-rules/SKILL.md`）を編集する**。`~/.claude/CLAUDE.md`のブロック内を直接編集しない（次回installで消える）
-2. `./install.sh`でローカルに反映
-3. commit / push
+1.**このリポの`rules/common-rules.md`（または`skills/init-rules/SKILL.md`）を編集する**。`~/.claude/CLAUDE.md`のブロック内も、生成物の`rules/global-rules.md` / `rules/codex-global-rules.md`も直接編集しない（次回の生成・installで消える）
+2. `./install.sh`でローカルに反映（最初に`tools/build-rules.py`が生成物2枚を作り直す）
+3. 生成物ごとcommit / push。PJへ書き込んで配った先があれば、`tools/embed-rules.py <PJ>`をもう一度
 4. 他のPCでは`git pull && ./install.sh`
 
 ## 経緯
