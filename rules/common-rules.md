@@ -1,6 +1,6 @@
 # 共通ルール（全PJ共通の下地）
 
-全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。
+全PJ共通の下地。このブロックの外に書くPJ固有の指示が優先する。
 `~/.claude/CLAUDE.md`・`~/.codex/AGENTS.md`に以前の共通ルール（`claude-rules:begin` / `codex-rules:begin`のブロック）が残っていたら、二重に読まれるのでユーザーに伝え、了承を得てそのブロックを消す。
 <!-- if:claude+codex -->
 PJに`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを読まなくなる）。
@@ -24,7 +24,7 @@ PJに`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを�
 
 - checkpointはリポ直下の`checkpoints/YYYY-MM-DD-作業名-中身.md`（どちらも日本語の短い語）。**作業名はカード（§4）の見出しと同じ語にする**——複数日にわたるログを`checkpoints/*-作業名-*`で一括して引くため。**1日1作業1ファイル**、同日に別作業なら分け、同じ日の続きは同ファイルへ追記。
 - `PROGRESS.md`の「完了」は**1行サマリ＋checkpointリンクだけ**。古い分は消してよい。
-- **`PROGRESS.md`に更新履歴を積まない。**「最終更新」は日付だけを書き、「前の更新 = 」を入れ子で重ねない（経緯はcheckpointへ）。**ヘッダが数千バイトに膨れるのはこれが原因。**
+- **`PROGRESS.md`に更新履歴を積まない。**「最終更新」は日付だけを書き、「前の更新 = 」を入れ子で重ねない（経緯はcheckpointへ）。
 - **{{PJ}}にセッション履歴を追記しない**（毎回全文ロードされる）。
 - 決定（ADR）は独立した節を持たず、決定は日付付き1行で`REQUIREMENTS.md`の方針へ、理由は`NOTES.md`へ。
 - **常時ロードされるファイルの上限**（PJの{{PJ}}で上書き可）: {{LIMIT_COMMON}} **14,336B** / {{LIMIT_PJ}} **6,144B** / PROGRESS.md **60行かつ12,288B**。判定はPJルートで`{{CHECK_LIMITS}}`。超過はその場で指摘し、意味を落とさずバイトを削る（畳める記録はcheckpointへ）。
@@ -74,7 +74,7 @@ PJに`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを�
 
 - **コミットは1作業ごと**（1ドキュメント・1機能・1設定変更など）。<!-- if:autocommit -->まとまりが完了するたび指示を待たずにcommitする。<!-- endif --><!-- if:!autocommit -->commitはユーザーの指示で行う。<!-- endif -->無関係な変更を混ぜない。<!-- if:autocommit -->作業が無ければ不要。<!-- endif -->
 <!-- if:autopush -->
-- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`（機微はprivate/publicで管理する前提）。PJの`{{PJ}}`に「pushはユーザー指示時のみ」とあれば従う。<!-- if:worktree -->push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。<!-- endif -->
+- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`。PJの`{{PJ}}`に「pushはユーザー指示時のみ」とあれば従う。<!-- if:worktree -->push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。<!-- endif -->
 <!-- endif -->
 <!-- if:!autopush -->
 - **pushはユーザーの指示があった時だけ**。
