@@ -73,6 +73,7 @@ class VariantTest(unittest.TestCase):
     def test_相手のホームにある物を指さない(self):
         for v in br.VARIANTS:
             t = br.render(v, options=set(br.OPTIONS))
+            self.assertIn('以前の共通ルール', t, v)
             self.assertNotIn('~/.claude/tools', t, v)
             self.assertNotIn('~/.codex/tools', t, v)
             self.assertNotIn('init-rules', t, v)

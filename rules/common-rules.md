@@ -1,6 +1,7 @@
 # 共通ルール（全PJ共通の下地）
 
 全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。
+`~/.claude/CLAUDE.md`・`~/.codex/AGENTS.md`に以前の共通ルール（`claude-rules:begin` / `codex-rules:begin`のブロック）が残っていたら、二重に読まれるのでユーザーに伝え、了承を得てそのブロックを消す。
 <!-- if:claude+codex -->
 PJに`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを読まなくなる）。
 <!-- endif -->
