@@ -77,6 +77,15 @@
         "loop-out/final.md"
       ],
       "judge_questions": []
+    },
+    {
+      "id": "commit",
+      "title": "コミット",
+      "worker": "step-worker",
+      "reviewer": null,
+      "gate": "gates/commit.sh",
+      "instructions": "（例）この実行の成果物を1コミットにする。①記録（checkpoint・REQUIREMENTS.mdのカードの現在地・PROGRESS.md）を書く ②**別のBash呼び出しで** `git add` と `git commit`（ファイルの編集とcommitを同じ呼び出しに入れない。記録の関門のフックが止める）③PJのGit運用が自動pushなら `git push`（must_stop に共有ブランチへのpushがあれば、その前で止まる）。コミットメッセージはPJの規約どおり",
+      "judge_questions": []
     }
   ]
 }

@@ -40,6 +40,15 @@ class ScaffoldTest(unittest.TestCase):
         self.assertFalse((self.root / '.claude/agents/step-worker.md').exists())
         self.assertTrue(os.access(self.root / '.claude/loop/bin/loopctl.py', os.X_OK))
 
+    def test_汎用のひな型はコミットの工程とゲートを持つ(self):
+        scaffold(self.root, '--profile', 'generic')
+        cfg = json.loads((self.root / '.claude/loop/pipeline.json').read_text())
+        commit = [x for x in cfg['steps'] if x['id'] == 'commit'][0]
+        self.assertEqual(commit['gate'], 'gates/commit.sh')
+        self.assertIn('別のBash呼び出し', commit['instructions'])
+        self.assertTrue((self.root / '.claude/loop/gates/commit.sh').exists())
+        self.assertIn('ループの仕組みの課題', (self.root / '.claude/loop/candidates.md').read_text())
+
     def test_汎用のひな型は汎用の工程役を入れる(self):
         scaffold(self.root, '--profile', 'generic')
         self.assertTrue((self.root / '.claude/agents/step-worker.md').exists())
@@ -314,6 +323,13 @@ class LoopRunTest(unittest.TestCase):
         out = self.stop()
         self.assertEqual(out['decision'], 'block')
         self.assertIn('requirements', out['reason'])
+
+    def test_催促の回数を実行の中で積み上げる(self):
+        self.ctl('begin')
+        self.stop()
+        self.ctl('start', 'requirements')  # 状態が進んで数え直しても、合計は減らない
+        self.stop()
+        self.assertEqual(self.state()['nudges_total'], 2)
 
     def test_統括役でないセッションには催促しない(self):
         self.ctl('begin')
@@ -795,6 +811,48 @@ class ScopeGateTest(unittest.TestCase):
         (self.root / 'docs/loop/design.md').write_text('# 設計\n')
         self.assertIn('一覧が無い', self.scope().stdout)
 
+    def lib(self, body):
+        base = json.loads((self.loop / 'state.json').read_text())['base_commit']
+        env = dict(self.env, LOOP_STEP='x', REPO_ROOT=str(self.root), LOOP_BASE_COMMIT=base or '')
+        return subprocess.run(['bash', '-c', '. "$LOOP_DIR/gates/lib.sh"; ' + body + '; gate_end'],
+                              capture_output=True, text=True, env=env)
+
+    def test_触ってはいけない場所の変更を落とす(self):
+        self.assertEqual(self.lib("forbid_paths '^README\\.md$' 説明書").returncode, 0)
+        (self.root / 'README.md').write_text('changed\n')
+        p = self.lib("forbid_paths '^README\\.md$' 説明書")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('触ってはいけない場所が変わった（説明書）: README.md', p.stdout)
+
+    def test_触ってはいけない場所の新規ファイルも落とし開始時の変更は数えない(self):
+        (self.root / 'data').mkdir()
+        (self.root / 'data/gen.json').write_text('{}\n')
+        self.assertIn('data/gen.json', self.lib("forbid_paths '^data/'").stdout)
+        self.assertEqual(self.lib("forbid_paths '^\\.claude/'").returncode, 0)  # ループ自身は数えない
+
+    def test_コミットのゲートは未コミットの変更を落とす(self):
+        self.git('add', '-A'); self.git('commit', '-qm', 'ひな型')
+        p = subprocess.run(['bash', str(self.loop / 'gates/commit.sh')], capture_output=True, text=True,
+                           env=dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root)))
+        self.assertEqual(p.returncode, 0, p.stdout)
+        (self.root / 'src/a.py').write_text('dirty\n')
+        p = subprocess.run(['bash', str(self.loop / 'gates/commit.sh')], capture_output=True, text=True,
+                           env=dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root)))
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('未コミットの変更が残っている', p.stdout)
+
+    def test_push済みを求める指定では上流が無ければ落とす(self):
+        self.git('add', '-A'); self.git('commit', '-qm', 'ひな型')
+        p = subprocess.run(['bash', str(self.loop / 'gates/commit.sh')], capture_output=True, text=True,
+                           env=dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root), PUSH_REQUIRED='1'))
+        self.assertEqual(p.returncode, 0, p.stdout)  # commands.env の空の値が環境の値を上書きする
+        env_f = self.loop / 'gates/commands.env'
+        env_f.write_text(env_f.read_text().replace('PUSH_REQUIRED=""', 'PUSH_REQUIRED="1"'))
+        p = subprocess.run(['bash', str(self.loop / 'gates/commit.sh')], capture_output=True, text=True,
+                           env=dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root)))
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('上流のブランチが無い', p.stdout)
+
 
 class PerItemTest(unittest.TestCase):
     """per_item: 項目の一覧 × 工程の型を begin で展開し、項目ごとに独立して止まる。"""
@@ -894,6 +952,104 @@ class PerItemTest(unittest.TestCase):
         self.assertEqual(rules[0]['check']['args'][0], 'loop-out/{item}/decide.md')
 
 
+class PerItemOrderTest(PerItemTest):
+    """per_item の順番（serial）・一覧のファイル・0件の扱い。"""
+
+    def set_pi(self, **kw):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['per_item'].update(kw)
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+
+    def finish_triage(self):
+        st = self.state()
+        st['steps']['triage']['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st))
+
+    def test_順番に回す指定では次の1件だけを返し順番を守らせる(self):
+        self.set_pi(serial=True)
+        self.ctl('begin', '--items', 'q1', 'q2', 'q3')
+        self.finish_triage()
+        self.assertEqual([x['id'] for x in json.loads(self.ctl('next').stdout)], ['q1/decide'])
+        self.assertIn('q1/fix', self.ctl('start', 'q2/decide', ok=False).stderr)
+        st = self.state()
+        for sid in ('q1/decide', 'q1/fix'):
+            st['steps'][sid]['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        self.assertEqual([x['id'] for x in json.loads(self.ctl('next').stdout)], ['q2/decide'])
+
+    def test_順番に回す指定では前の項目が止まれば後ろは待つ(self):
+        self.set_pi(serial=True)
+        self.ctl('begin', '--items', 'q1', 'q2')
+        self.finish_triage()
+        self.ctl('start', 'q1/decide')
+        self.ctl('block', 'q1/decide', '人の裁定が要る')
+        self.assertEqual(json.loads(self.ctl('next').stdout), [])
+
+    def test_指定が無ければ項目は並べて返す(self):
+        self.ctl('begin', '--items', 'q1', 'q2')
+        self.finish_triage()
+        self.assertEqual([x['id'] for x in json.loads(self.ctl('next').stdout)], ['q1/decide', 'q2/decide'])
+
+    def test_一覧のファイルをpipelineに書いておけば読む(self):
+        (self.root / 'items.txt').write_text('# M1のカード\nc1\nc2\n')
+        self.set_pi(items_file='items.txt', items=[])
+        self.ctl('begin')
+        self.assertEqual(self.state()['items'], ['c1', 'c2'])
+        self.ctl('begin', '--force', '--items', 'z9')  # その場で渡した一覧が優先
+        self.assertEqual(self.state()['items'], ['z9'])
+
+    def test_一覧のファイルが無ければ断る(self):
+        self.set_pi(items_file='nothing.txt')
+        self.assertIn('nothing.txt', self.ctl('begin', ok=False).stderr)
+
+    def test_項目0件では始めず明示すれば始める(self):
+        self.set_pi(items=[])
+        self.assertIn('0件', self.ctl('begin', ok=False).stderr)
+        self.ctl('begin', '--allow-empty')
+        self.assertEqual(self.state()['items'], [])
+
+
+class LimitAndRetroTest(PerItemTest):
+    """begin --limit（実行の間だけの上限）と retro（振り返りの数字）。"""
+
+    def test_上限をこの実行の間だけ差し替えpipelineは変えない(self):
+        before = (self.loop / 'pipeline.json').read_bytes()
+        self.ctl('begin', '--items', 'q1', '--limit', 'max_shards=1')
+        self.ctl('start', 'triage')
+        p = self.ctl('start', 'triage', '--shard', 'b', ok=False)
+        self.assertIn('分担の数が上限（1）', p.stderr)
+        self.assertEqual((self.loop / 'pipeline.json').read_bytes(), before)
+        self.assertIn('max_shards=1', self.ctl('status').stdout)
+        self.ctl('begin', '--force', '--items', 'q1')  # 次の実行には持ち越さない
+        self.assertNotIn('limit_override', self.state())
+        self.ctl('start', 'triage')
+        self.ctl('start', 'triage', '--shard', 'b')
+
+    def test_知らない上限の名前は断る(self):
+        self.assertIn('上限の名前', self.ctl('begin', '--items', 'q1', '--limit', 'max_foo=1', ok=False).stderr)
+
+    def test_振り返りは差し戻しの理由と催促と人待ちを数える(self):
+        self.ctl('begin', '--items', 'q1', 'q2')
+        (self.root / 'loop-out').mkdir()
+        self.done('triage')
+        self.ctl('review', 'triage', 'fail', '--note', '材料が足りない')
+        self.ctl('submit', 'triage')
+        self.ctl('review', 'triage', 'pass')
+        self.ctl('gate', 'triage', ok=False)  # 成果物が無いので不合格
+        st = self.state()
+        st['nudges_total'] = 2
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        d = json.loads(self.ctl('retro', '--json').stdout)
+        self.assertEqual(d['rework_total'], 2)
+        self.assertEqual(d['rework_by_kind'], {'レビュー': 1, '決定論ゲート': 1})
+        self.assertTrue(any('need_file loop-out/triage.md' in k for k, _ in d['rework_reasons']))
+        self.assertEqual(d['nudges_total'], 2)
+        self.assertEqual([x['item'] for x in d['items']], ['q1', 'q2'])
+        text = self.ctl('retro').stdout
+        self.assertIn('振り返り', text)
+        self.assertIn('差し戻し 2回', text)
+
+
 class UpdateTest(unittest.TestCase):
     """--update: 入れた時の版と突き合わせ、手を入れていないファイルだけ新しくする。"""
 
@@ -957,8 +1113,26 @@ class UpdateTest(unittest.TestCase):
         self.assertIn('--name', scaffold(root, '--update').stderr)
         p = scaffold(root, '--update', '--name', 'x')
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertIn('手で直されているので触っていない: 2件', p.stdout)
+        # ひな型側がこの間に変わったかどうかで、差分コマンド付きの一覧か1行のまとめかに分かれる（どちらも触らない）
+        self.assertIn('x-step-worker.md', p.stdout)
+        self.assertIn('loop-x/bin/loopctl.py', p.stdout)
         self.assertIn('手で足した行', w.read_text())
+        self.assertEqual(c.read_text(), '# 古い\n')
+
+    def test_ひな型側が変わっていない手直しは1行にまとめる(self):
+        # 入れた時の版と今の版で中身が同じファイルを手で直した場合（取り込むものが無い）
+        w = self.root / '.claude/agents/dev-design.md'
+        w.write_text(w.read_text() + '手で足した行\n')
+        p = self.update()
+        self.assertIn('手を入れてある（ひな型側の変更なし・取り込むものは無い）: 1件', p.stdout)
+        self.assertNotIn('templates/loop/dev/.claude/agents/dev-design.md', p.stdout)
+        self.assertIn('手で足した行', w.read_text())
+
+    def test_リンタの設定があれば対象から外すよう知らせる(self):
+        (self.root / 'pyproject.toml').write_text('[tool.ruff]\nline-length = 100\n')
+        self.assertIn('extend-exclude', self.update().stdout)
+        (self.root / 'pyproject.toml').write_text('[tool.ruff]\nextend-exclude = [".claude"]\n')
+        self.assertNotIn('extend-exclude', self.update().stdout)
 
     def test_新規に入れる時はprofileが要る(self):
         p = scaffold(self.root)

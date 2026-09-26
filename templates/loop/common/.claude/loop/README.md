@@ -22,16 +22,18 @@
 | `.claude/loop/bin/rules.py` | ルールの検査4種（loopctlから使う） |
 | `.claude/loop/state.json` | 実行中の状態（git管理外） |
 | `.claude/loop/stats/gates.jsonl` | ゲートの検査ごとの合否の記録（git管理する。打率と外す候補の材料） |
-| `.claude/loop/candidates.md` | ループの中で気づいた別件・改善の種。**ループは起票しない**ので、ここに溜まる。起票するかは人が決める |
+| `.claude/loop/candidates.md` | ループの中で気づいた別件・改善の種。**ループは起票しない**ので、ここに溜まる。起票するかは人が決める。作業の別件と、ループの仕組みそのものの課題（`[ひな型]`）の2節に分け、実行の終わりに`loopctl.py retro`の振り返りを貼る |
 
 ## 導入したら最初にやること
 
-0. **上限で止まることを先に確かめる**（打ち切りの経路は、普段の実行では発火しない）: `pipeline.json`の`limits.max_shards`を1にして`begin`し、同じ工程へ2回`start`して止まることを見る。確かめたら値を戻す
+0. **上限で止まることを先に確かめる**（打ち切りの経路は、普段の実行では発火しない）: `loopctl.py begin --limit max_shards=1`（項目ごとに回すなら`--allow-empty`も）で始め、同じ工程へ2回`start`して止まることを見て、`loopctl.py finish`で閉じる。上限の差し替えはこの実行の間だけで、`pipeline.json`は書き換えない。閉じた実行に「作業中」の工程が残るが、次の`begin`で消える
 
 1. `.claude/loop/GOAL.md`に完了条件を書く
 2. `.claude/loop/gates/commands.env`にビルド・リント・テストのコマンドを書く（空のままのゲートは不合格になる）
 3. `.claude/loop/pipeline.json`の工程を、このリポの作業に合わせる（汎用版は`instructions`・`outputs`・`review_focus`を書き換える）
 4. ゲートを空打ちして、形が通るかを見る: `LOOP_STEP=<工程> LOOP_DIR=.claude/loop REPO_ROOT=. bash .claude/loop/gates/<工程>.sh`
+   - リンタがあるリポでは、ひな型のPython（`.claude/`）をリンタの対象から外す（ひな型はリポのリンタ設定に合わせて書いていない。例: ruffなら`extend-exclude = [".claude"]`）。導入の道具が設定を見つけたら知らせる
+   - コミットまでをループで回すなら、汎用版の`commit`工程（`gates/commit.sh`）を使い、pushまでを1作業とするPJは`commands.env`の`PUSH_REQUIRED=1`
 5. 判断役（`.claude/agents/gate-judge.md`）の`model`を選ぶ。既定のhaikuは形や網羅の問い向き。問いが文書の読み込み（過去の裁定・仕様との突き合わせ）を要するなら、sonnetへ上げる
 6. `.claude/settings.json`がgitの無視対象なら（導入の道具が知らせる）、フックはこのworktreeにしか無い。**ループはこのworktreeから起動し、終わってもworktreeを消さない**
 
@@ -112,7 +114,8 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 
 ```json
 "per_item": {
-  "items": [],
+  "items_file": ".claude/loop/items.txt",
+  "serial": false,
   "after": ["triage"],
   "steps": [
     {"id": "decide", "worker": "step-worker", "reviewer": "step-reviewer", "gate": "gates/outputs.sh",
@@ -124,7 +127,8 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 ```
 
 - 型の中の`{item}`は項目idに置き換わる。項目の中では直前の型の工程が前提になる。最初の工程の前提は`after`（共通の工程）
-- 項目の一覧は`begin --items-file <一覧>`（1行1件、またはJSONの配列）か`--items a b c`。実行中に足すのは`loopctl.py add-item <id> ...`。一覧は実行の状態に持つので、`pipeline.json`（ループ自身）を書き換えずに済む。上限は`limits.max_items`
+- 項目の一覧は`per_item.items_file`（リポのルートからのパス。1行1件、またはJSONの配列）に書いておけば`begin`が読む。その場で渡すなら`begin --items-file <一覧>`か`--items a b c`（こちらが優先）。**0件では始まらない**（渡し忘れを防ぐ。後から`add-item`するつもりなら`--allow-empty`）。実行中に足すのは`loopctl.py add-item <id> ...`。一覧の中身は実行の状態に持つので、`pipeline.json`（ループ自身）を書き換えずに済む。上限は`limits.max_items`
+- **`"serial": true`で一覧の順に1件ずつ**回す。各項目の最初の工程が前の項目の最後の工程を前提にするので、`next`は次の1件だけを返し、`start`も順番を守らせる。同じ場所を触る項目（作業ツリーを共有する実装など）は並列にしない。前の項目が止まれば後ろは待つ
 - 全項目が済んでから動く共通の工程は、`"after": ["*/fix"]`のように書く
 - 判断役の問いのidは項目をまたいで同じなので、較正と誤りの例は項目の間で共有される。ルールの候補も、パスの項目idを`{item}`に戻して型の単位で育つ
 - 工程役とゲートは、展開後の定義を`loopctl.py show <工程>`で読む（ゲートには`LOOP_ITEM`・`LOOP_OUTPUTS`も渡る）
@@ -132,6 +136,10 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 ## 必ず止まる場面（must_stop）
 
 統括役は、`pipeline.json`の`must_stop`に挙がった操作の直前で必ず止まる。既定は共有ブランチへのpush・PRのマージ・デプロイと本番への反映・外へのメッセージの送信・データの削除。記録のpushが既定の手順のリポなどでは、ここから外す（取り消せない操作は、この一覧にかかわらず人に確かめる）。
+
+## 振り返り（retro）
+
+`loopctl.py retro`で、実行の数字をまとめて出す: 経過と完了した工程・項目ごとの経過と差し戻し・差し戻しの理由の分布（レビュー／決定論ゲート／判断役／人、ゲートは検査の鍵ごと）・Stopフックの催促の回数・人待ちの件数と種類・判断役が自動で決めて人が後から正した件数。統括役は止まる前にこれを`candidates.md`の「振り返り」節へ貼る（`--json`もある）。決定論ゲートの誤判定は機械では数えられないので、気づいたら`[ひな型]`で1行残す。
 
 ## 同じリポに2つ目のループを置く
 
@@ -152,6 +160,8 @@ claude-rulesの`tools/loop-scaffold.py <リポ> --profile generic --name <名前
 | `limits.max_total_rework` | 10 | **実行全体**の差し戻しの合計の上限（`max_rework`は1工程あたり） |
 | `limits.max_shards` | 30 | 実行全体で着手した分担の数の上限 |
 | `limits.max_items` | 100 | 項目ごとに回す時の項目の数の上限（`begin`と`add-item`で確かめる） |
+
+どの上限も、`begin --limit <名前>=<値>`でその実行の間だけ差し替えられる（`pipeline.json`は書き換えない。`status`に差し替えた値が出る）。
 | `sunset_min_runs` | 10 | 一度も落ちない検査を外す候補に挙げるまでの実行回数 |
 | `judge.max_promoted_per_step` | 3 | 工程あたりの採用中のルールの上限 |
 | `judge.default_threshold` | 0.9 | 較正前に使う閾値 |

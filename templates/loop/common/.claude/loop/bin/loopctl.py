@@ -106,6 +106,8 @@ def expand(raw: dict, items: list[str]) -> dict:
     """per_item（工程の型）を項目ごとに展開し、`<項目>/<工程>`の工程として steps の後ろへ並べる。
 
     項目の中では、型の工程は既定で直前の型の工程を前提にする。最初の工程の前提は per_item.after。
+    per_item.serial が真なら、各項目の最初の工程は前の項目の最後の工程も前提にする（一覧の順に1件ずつ。
+    同じ場所を触る項目を並列にしない。前の項目が止まれば後ろは待つ）。
     判断役の問いのidは項目をまたいで同じままにする（較正と誤りの例を項目の間で共有するため）。
     """
     pi = raw.get("per_item")
@@ -115,6 +117,7 @@ def expand(raw: dict, items: list[str]) -> dict:
     steps = list(raw.get("steps", []))
     tmpl = pi.get("steps", [])
     tids = [t["id"] for t in tmpl]
+    prev_last = None
     for it in items:
         for i, t in enumerate(tmpl):
             sd = subst(t, it)
@@ -124,7 +127,10 @@ def expand(raw: dict, items: list[str]) -> dict:
                 sd["after"] = [f"{it}/{d}" if d in tids else d for d in t["after"]]
             else:
                 sd["after"] = [f"{it}/{tids[i - 1]}"] if i else list(pi.get("after", []))
+            if i == 0 and pi.get("serial") and prev_last:
+                sd["after"].append(prev_last)
             steps.append(sd)
+        prev_last = f"{it}/{tids[-1]}" if tids else prev_last
     p["steps"] = steps
     return p
 
@@ -138,10 +144,44 @@ def pipeline(items: list[str] | None = None) -> dict:
         st = load_json(STATE)
         items = st["items"] if st and "items" in st else raw["per_item"].get("items", [])
     p = expand(raw, items or [])
+    st = load_json(STATE)
+    if st and st.get("limit_override"):
+        p = with_overrides(p, st["limit_override"])
     ids = [s["id"] for s in p.get("steps", [])]
     if len(ids) != len(set(ids)):
         raise LoopError("pipeline.json の工程idが重複しています")
     return p
+
+
+TOP_LIMITS = ("time_budget_sec", "max_rework", "max_auto_continues")
+
+
+def with_overrides(p: dict, ov: dict) -> dict:
+    """`begin --limit` で、この実行の間だけ差し替えた上限を当てる（pipeline.json＝ループ自身は書き換えない）。"""
+    p = dict(p)
+    p["limits"] = dict(p.get("limits", {}))
+    for k, v in ov.items():
+        if k in TOP_LIMITS:
+            p[k] = v
+        else:
+            p["limits"][k] = v
+    return p
+
+
+def parse_limits(pairs: list[str] | None, raw: dict) -> dict:
+    out = {}
+    known = set(raw.get("limits", {})) | set(TOP_LIMITS) | {"time_budget_hard", "max_total_rework", "max_shards", "max_items"}
+    for x in pairs or []:
+        if "=" not in x:
+            raise LoopError(f"--limit は <名前>=<値> の形で渡す（{x}）")
+        k, v = x.split("=", 1)
+        if k not in known:
+            raise LoopError(f"--limit の {k} は上限の名前ではありません（使えるのは {', '.join(sorted(known))}）")
+        try:
+            out[k] = json.loads(v)
+        except ValueError:
+            raise LoopError(f"--limit の値 {v} を読めません（数・true/false・null）")
+    return out
 
 
 def step_def(p: dict, sid: str) -> dict:
@@ -228,6 +268,8 @@ def fingerprint(st: dict) -> str:
 
 def render(st: dict, p: dict) -> str:
     lines = [f"実行 {st['run_id']}  状態: {'完了（閉じた）' if st.get('finished') else '進行中' if st['active'] else '一時停止中'}"]
+    if st.get("limit_override"):
+        lines.append("※ この実行だけ上限を差し替え: " + ", ".join(f"{k}={json.dumps(v)}" for k, v in st["limit_override"].items()))
     why = limit_reason(st, p) if st.get("active") else None
     if why:
         lines.append(f"※ {why}（次の着手で止まります）")
@@ -327,16 +369,38 @@ def halt(st: dict, reason: str) -> None:
 
 
 def cmd_begin(a):
-    raw = load_json(PIPELINE) or {}
+    raw = load_json(PIPELINE)
+    if raw is None:
+        raise LoopError(f"{PIPELINE} がありません")
     items = None
+    override = parse_limits(a.limit, raw)
     if raw.get("per_item"):
-        items = read_items(a) if (a.items or a.items_file) else list(raw["per_item"].get("items", []))
+        pi = raw["per_item"]
+        if a.items or a.items_file:
+            items = read_items(a)
+        elif pi.get("items_file"):
+            # 一覧のファイルは pipeline.json に置き場だけを書く（中身は実行の状態に写す。実行中の add-item は状態へ）
+            f = REPO / pi["items_file"]
+            if not f.exists():
+                raise LoopError(f"per_item.items_file の {pi['items_file']} がありません（リポのルートからのパス）")
+            items = parse_items_text(f.read_text(encoding="utf-8"))
+        else:
+            items = list(pi.get("items", []))
         check_items(items, raw)
-    p = pipeline(items=items or [])
+        if not items and not a.allow_empty:
+            raise LoopError("項目が0件です。一覧を渡すか（`--items-file <一覧>`、または pipeline.json の per_item.items_file）、"
+                            "0件で始めて後から `add-item` するなら --allow-empty")
     with locked():
         old = load_json(STATE)
         if old and old.get("active") and not a.force:
             raise LoopError("進行中の実行があります。続けるなら `resume`、捨てて始め直すなら `begin --force`")
+    p = expand(raw, items or [])
+    if override:
+        p = with_overrides(p, override)
+    ids = [x["id"] for x in p.get("steps", [])]
+    if len(ids) != len(set(ids)):
+        raise LoopError("pipeline.json の工程idが重複しています")
+    with locked():
         st = {
             "run_id": time.strftime("%Y%m%d-%H%M%S", time.localtime(now())),
             "active": True,
@@ -350,21 +414,28 @@ def cmd_begin(a):
             "steps": {s["id"]: {"status": "pending", "shards": {}, "rework": 0, "notes": [], "blocker": None}
                       for s in p["steps"] if not a.only or s["id"] in a.only},
             "stop_guard": {"count": 0, "fingerprint": ""},
+            "nudges_total": 0,
         }
+        if override:
+            st["limit_override"] = override
         if items is not None:
             st["items"] = items
         save_json(STATE, st)
     print(render(st, p))
 
 
+def parse_items_text(text: str) -> list[str]:
+    """項目の一覧（JSONの配列、または1行1件。#で始まる行と空行は読まない）。"""
+    try:
+        return [str(x) for x in json.loads(text)]
+    except ValueError:
+        return [l.strip() for l in text.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+
+
 def read_items(a) -> list[str]:
     items = list(a.items or [])
     if a.items_file:
-        text = Path(a.items_file).read_text(encoding="utf-8")
-        try:
-            items += [str(x) for x in json.loads(text)]
-        except ValueError:
-            items += [l.strip() for l in text.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+        items += parse_items_text(Path(a.items_file).read_text(encoding="utf-8"))
     return items
 
 
@@ -1181,11 +1252,98 @@ def cmd_resume(a):
               + ("（時間なら `resume --extend <秒>`）" if "時間" in why else "（pipeline.json の limits を見直す）"))
 
 
+# ---------- 振り返り ----------
+
+REWORK_KINDS = (("レビュー", "レビュー"), ("決定論ゲート不合格", "決定論ゲート"), ("判断役", "判断役"), ("人の判断", "人"))
+
+
+def step_times(s: dict):
+    """工程の着手（最初の「着手」の記録）と終わり（完了なら最後の記録）の時刻。"""
+    ns = s.get("notes", [])
+    start = next((n["t"] for n in ns if n["text"].startswith("着手")), None)
+    end = ns[-1]["t"] if ns and s["status"] == "done" else None
+    return start, end
+
+
+def retro_data(st: dict, p: dict) -> dict:
+    steps = st["steps"]
+    end_t = st.get("finished_at") or now()
+    rework_total = sum(s.get("rework", 0) for s in steps.values())
+    kinds: dict[str, int] = {}
+    reasons: dict[str, int] = {}
+    for s in steps.values():
+        for n in s.get("notes", []):
+            if not n["text"].startswith("差し戻し: "):
+                continue
+            body = n["text"][len("差し戻し: "):]
+            kind = next((k for pre, k in REWORK_KINDS if body.startswith(pre)), "その他")
+            kinds[kind] = kinds.get(kind, 0) + 1
+            keys = re.findall(r"〔([^〕]+)〕", body)
+            for k in keys or [body[:60]]:
+                reasons[f"{kind}: {k}"] = reasons.get(f"{kind}: {k}", 0) + 1
+    items = []
+    for it in st.get("items", []):
+        own = {sid: s for sid, s in steps.items() if sid.startswith(it + "/")}
+        ts = [step_times(s) for s in own.values()]
+        starts = [a for a, _ in ts if a]
+        done = all(s["status"] == "done" for s in own.values()) and own
+        ends = [b for _, b in ts if b]
+        items.append({"item": it, "done": bool(done), "rework": sum(s.get("rework", 0) for s in own.values()),
+                      "elapsed": int(max(ends) - min(starts)) if done and starts and ends else None,
+                      "status": "完了" if done else next((LABEL[s["status"]] for s in own.values() if s["status"] != "done"), "未着手")})
+    rows = [r for r in load_judgments() if r.get("run") == st["run_id"]]
+    asks = [r for r in rows if r.get("kind") == "ask"]
+    judged = [r for r in rows if r.get("kind") != "ask"]
+    wrong = [r for r in rows if r.get("human_answer") and r.get("answer") is not None
+             and r.get("decision") in ("auto_pass", "auto_fail", "auto_answer") and not correct(r)]
+    return {
+        "run": st["run_id"], "goal": st.get("goal", ""), "finished": bool(st.get("finished")),
+        "elapsed": int(end_t - st["started_at"]),
+        "steps_done": sum(1 for s in steps.values() if s["status"] == "done"), "steps_total": len(steps),
+        "items": items,
+        "rework_total": rework_total, "rework_by_kind": kinds,
+        "rework_reasons": sorted(reasons.items(), key=lambda x: -x[1])[:10],
+        "nudges_total": st.get("nudges_total", 0),
+        "human_waits": {"工程役の問い": len(asks),
+                        "判断役が人へ回した": sum(1 for r in judged if r.get("decision") == "escalate"),
+                        "理由だけの停止（いま）": sum(1 for s in steps.values()
+                                             if s["status"] == "blocked" and not s.get("needs_human"))},
+        "judge_wrong": len(wrong),
+        "blocked_now": blocked_items(st),
+    }
+
+
+def cmd_retro(a):
+    """実行の振り返りの数字（項目ごとの経過・差し戻しの理由の分布・催促・人待ち・判断役の誤り）。"""
+    st, p = state(), pipeline()
+    d = retro_data(st, p)
+    if a.json:
+        print(json.dumps(d, ensure_ascii=False, indent=2))
+        return
+    out = [f"### {time.strftime('%Y-%m-%d', time.localtime(now()))} 振り返り（実行{d['run']}{'・閉じた' if d['finished'] else '・進行中'}）",
+           f"- 経過 {d['elapsed']}s、工程 {d['steps_done']}/{d['steps_total']} 完了" + (f"。完了条件: {d['goal']}" if d["goal"] else "")]
+    if d["items"]:
+        done = [x for x in d["items"] if x["done"]]
+        out.append(f"- 項目 {len(done)}/{len(d['items'])} 完了: " + "、".join(
+            f"{x['item']}（{x['elapsed']}s・差し戻し{x['rework']}）" if x["done"] else f"{x['item']}（{x['status']}）" for x in d["items"]))
+    out.append(f"- 差し戻し {d['rework_total']}回" + (f"（{'・'.join(f'{k}{v}' for k, v in d['rework_by_kind'].items())}）" if d["rework_by_kind"] else ""))
+    for k, v in d["rework_reasons"]:
+        out.append(f"  - {k}: {v}回")
+    out.append(f"- Stopフックの催促 {d['nudges_total']}回")
+    out.append("- 人待ち: " + "、".join(f"{k}{v}件" for k, v in d["human_waits"].items()))
+    out.append(f"- 判断役が自動で決めて人が後から正した件数 {d['judge_wrong']}件（決定論ゲートの誤判定は数えられないので、気づいたら`[ひな型]`で1行）")
+    if d["blocked_now"]:
+        out.append("- いま止まっている: " + "、".join(d["blocked_now"]))
+    print("\n".join(out))
+
+
 def set_active(flag: bool, msg: str, finished: bool = False):
     with locked():
         st = state()
         st["active"] = flag
         st["finished"] = finished
+        if finished:
+            st["finished_at"] = now()
         st.pop("halted", None)
         st["stop_guard"] = {"count": 0, "fingerprint": ""}
         save_json(STATE, st)
@@ -1199,7 +1357,10 @@ def main(argv=None):
     b.add_argument("--goal", help="今回の完了条件（GOAL.mdの要約）")
     b.add_argument("--only", nargs="*", help="この工程だけで実行する")
     b.add_argument("--items", nargs="*", help="項目ごとに回す時の項目id（pipeline.json の per_item.items より優先）")
-    b.add_argument("--items-file", help="項目idの一覧（1行1件、またはJSONの配列）")
+    b.add_argument("--items-file", help="項目idの一覧（1行1件、またはJSONの配列）。無ければ pipeline.json の per_item.items_file")
+    b.add_argument("--allow-empty", action="store_true", help="項目0件で始める（後から add-item する時）")
+    b.add_argument("--limit", action="append", metavar="名前=値",
+                   help="この実行の間だけ上限を差し替える（例 --limit max_shards=1。pipeline.json は書き換えない）")
     ai = sub.add_parser("add-item", help="実行中に項目を足す（per_item）"); ai.add_argument("items", nargs="*")
     ai.add_argument("--items-file")
     sh = sub.add_parser("show", help="工程の定義を出す（項目ごとの工程は展開後）"); sh.add_argument("step")
@@ -1236,6 +1397,7 @@ def main(argv=None):
     sub.add_parser("pause", help="Stopフックの催促を止める（人が付き添う時）")
     rs = sub.add_parser("resume", help="催促を再開する（止まっていた実行も）"); rs.add_argument("--extend", type=int, default=0, help="時間の予算をこの秒数だけ延ばす")
     sub.add_parser("finish", help="実行を閉じる")
+    rr = sub.add_parser("retro", help="振り返りの数字（candidates.md の振り返り節へ貼る）"); rr.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     try:
         {
@@ -1243,7 +1405,7 @@ def main(argv=None):
             "review": cmd_review, "gate": cmd_gate, "judge": cmd_judge, "decide": cmd_decide, "override": cmd_override,
             "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire,
             "gate-stats": cmd_gate_stats, "accept-self": cmd_accept_self, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
-            "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer,
+            "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer, "retro": cmd_retro,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
             "resume": cmd_resume,
             "finish": lambda a: set_active(False, "実行を閉じました", finished=True),

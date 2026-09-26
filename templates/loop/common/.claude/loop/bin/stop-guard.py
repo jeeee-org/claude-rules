@@ -71,6 +71,7 @@ def main() -> int:
             return 0
         g["count"] += 1
         g["fingerprint"] = fp
+        st["nudges_total"] = st.get("nudges_total", 0) + 1  # 振り返り（retro）で数える
         lc.save_json(lc.STATE, st)
 
     budget = lc.effective_budget(st, p)

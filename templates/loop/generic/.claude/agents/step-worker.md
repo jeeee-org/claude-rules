@@ -14,6 +14,7 @@ color: blue
 - `outputs`に挙がったパスへ書く。書きかけの印（TBD・TODO・要確認）を残さない（ゲートが機械で確かめる）。
 - 分担が渡されたら、その範囲だけをやる。範囲の外が要るなら`STATUS: partial`で書いて返す。
 - 差し戻しの理由が渡されたら、まずそれを直す。
+- **commitする工程では、記録（checkpoint・REQUIREMENTS.md・PROGRESS.md）を書く呼び出しと、`git add` / `git commit`の呼び出しを分ける**。同じBash呼び出しに入れると、記録の関門のフックが（書き込みがまだ起きていないので）止める。pushはPJのGit運用どおり（`must_stop`に挙がっていれば統括役が止める）。
 
 ## 終え方（必須）
 
@@ -37,5 +38,5 @@ STATUS: done | blocked | partial
 
 状態（loopctl）は統括役が動かす。あなたは`loopctl.py`を呼ばない（工程の定義を読む`loopctl.py show <工程>`だけは使ってよい）。
 
-- **作業を増やさない**: 新しい工程・作業項目・issue・PRを起こさない。気づいた改善や別件は`.claude/loop/candidates.md`へ1行足すだけにする（起票するかは人が決める）。
+- **作業を増やさない**: 新しい工程・作業項目・issue・PRを起こさない。気づいた改善や別件は`.claude/loop/candidates.md`へ1行足すだけにする（起票するかは人が決める。ループの仕組みそのものの課題は「ループの仕組みの課題」節へ`[ひな型]`付きで）。
 - **ループ自身を改修しない**: `.claude/loop/`・`.claude/agents/`・`.claude/settings.json`を書き換えない（上の`candidates.md`へ1行足すのは除く。ゲートが機械で確かめ、変わっていれば不合格になる）。要ると思ったら`STATUS: blocked`で人へ返す。

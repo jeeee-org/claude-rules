@@ -13,8 +13,9 @@
 # 設計方針:
 #  - fail-open。判定できない時（jqもpython3も無い・gitの外・記録の5点を持たないリポ・
 #    見るリポが決められない）は黙って通す。**別のリポを見て誤るより通す。**
-#  - 禁止ではなく、意識した判断の強制。要らない時は理由を述べて
-#    CR_SKIP_RECORD_GUARD=1 を付けて通す（コマンドに残るので、あとから見て分かる）。
+#  - 禁止ではなく、意識した判断の強制。要らない時はコミットメッセージに`記録なし: <理由>`の行を
+#    入れる（履歴に残り、pushの関門・後追いの監査もこの行で通る）。メッセージを読めない形なら
+#    理由を述べて CR_SKIP_RECORD_GUARD=1 を付けて通す（コマンドに残るので、あとから見て分かる）。
 #  - CLAUDE.md・AGENTS.md（PJのルール）は数えない。ルールだけを直したcommitも記録は要る。
 #  - 止めた時は**コマンド全体が実行されない**。差し戻しの文面でそれを必ず言う
 #    （準備まで済んだと誤解すると、次のcommitが空振りする）。
@@ -139,6 +140,45 @@ case "$head_part" in *CR_SKIP_RECORD_GUARD*) exit 0 ;; esac
 # 履歴を作らない・作り直すだけのものは対象外
 case "$head_part" in *--dry-run*|*--amend*) exit 0 ;; esac
 
+# 理由付きの例外: **このcommitのメッセージ**に`記録なし: <理由>`（`No-Record:`）の行があれば通す。
+# 後追いの監査とpushの関門と同じ書き方で、理由が履歴に残る（環境変数との二重指定を要らなくする）。
+# 見るのはcommitのメッセージだけ——`-m`の引数・`-F -`に渡すヒアドキュメント・`-F <ファイル>`。
+# 同じ呼び出しで書く別のファイルの中身に同じ行があっても効かない。python3が無ければ見ない（環境変数で通す）
+if command -v python3 >/dev/null 2>&1; then
+  exempt=$(python3 - "$cmd" "$(read_json '.cwd')" <<'PY' 2>/dev/null
+import os, re, sys
+cmd, cwd = sys.argv[1], sys.argv[2] or os.getcwd()
+EX = re.compile(r"^\s*(記録なし|No-Record)\s*[:：]", re.M)
+lines = cmd.split("\n")
+msgs = []
+for i, line in enumerate(lines):
+    m = re.search(r"\bgit\b[^\n;&|]*?\bcommit\b", line)
+    if not m:
+        continue
+    seg = line[m.start():]
+    rest = "\n".join([seg] + lines[i + 1:])
+    hd = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", seg)
+    if hd and re.search(r"(?:-F\s*-|--file[= ]-)(?:\s|$)", seg):
+        body = []
+        for x in lines[i + 1:]:
+            if x.strip() == hd.group(2):
+                break
+            body.append(x)
+        msgs.append("\n".join(body))
+    for mm in re.finditer(r"(?:\s-m|\s--message)(?:=|\s+)(\"((?:[^\"\\]|\\.)*)\"|'([^']*)'|(\S+))", rest):
+        msgs.append(mm.group(2) or mm.group(3) or mm.group(4) or "")
+    ff = re.search(r"\s(?:-F|--file)(?:=|\s+)(\"([^\"]+)\"|'([^']+)'|(\S+))", seg)
+    if ff and (ff.group(2) or ff.group(3) or ff.group(4)) != "-":
+        try:
+            msgs.append(open(os.path.join(cwd, os.path.expanduser(ff.group(2) or ff.group(3) or ff.group(4))), encoding="utf-8").read())
+        except OSError:
+            pass
+print("1" if any(EX.search(x) for x in msgs) else "0")
+PY
+)
+  [ "$exempt" = 1 ] && exit 0
+fi
+
 # 書き込みとcommitが同じ呼び出しにある形は、判定できない（書き込みはまだ起きていない）
 if grep -Eq "$WRITE_RE" <<<"$(strip_quoted_args <<<"$head_part")"; then
   cat >&2 <<'MSG'
@@ -209,7 +249,8 @@ cat >&2 <<MSG
 完了と次の一手、要件・スコープの変化をREQUIREMENTS.mdへ、学びをNOTES.mdへ。
 
 このコマンドは**1行も実行されていません**（git addも走っていません）。記録を書いて
-から、準備の分ごと打ち直してください。この作業に記録が要らない場合は、理由を1行
-述べたうえでコマンドの先頭にCR_SKIP_RECORD_GUARD=1を付けて通してください。
+から、準備の分ごと打ち直してください。この作業に記録が要らない場合は、コミット
+メッセージに「記録なし: <理由>」の行を入れてください（履歴に残り、pushの関門もこれで通ります）。
+メッセージを読めない形（エディタで書く等）なら、コマンドの先頭にCR_SKIP_RECORD_GUARD=1を付けて通します。
 MSG
 exit 2

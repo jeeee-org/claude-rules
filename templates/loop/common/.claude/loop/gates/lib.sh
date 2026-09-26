@@ -104,6 +104,52 @@ PY
   if [ -z "$out" ]; then ok "変更はすべて「$heading」の範囲内"; else while IFS= read -r l; do ng "${l#NG }"; done <<<"$out"; fi
 }
 
+# 変更したファイル（実行開始時のコミットからの差分＋追跡外の新規ファイル）の一覧。
+# ループ自身のファイル（.claude/loop/・docs/loop/）と、実行開始時に既にあった未コミットの変更は数えない
+changed_files() {
+  python3 - "${LOOP_BASE_COMMIT:-}" <<'PY'
+import json, os, subprocess, sys
+base = sys.argv[1]
+def git(*a):
+    r = subprocess.run(["git", *a], capture_output=True, text=True)
+    return [x for x in r.stdout.splitlines() if x] if r.returncode == 0 else []
+try:
+    pre = set(json.load(open(os.path.join(os.environ["LOOP_DIR"], "state.json"))).get("base_preexisting", []))
+except (OSError, ValueError, KeyError):
+    pre = set()
+for f in sorted(set(git("diff", "--name-only", base) + git("ls-files", "--others", "--exclude-standard"))):
+    if not f.startswith((".claude/loop/", "docs/loop/")) and f not in pre:
+        print(f)
+PY
+}
+
+# 触ってはいけない場所（自動生成のデータ・凍結した資産など）が変わっていない。<正規表現> はリポのルートからのパスに当てる。
+# 例: forbid_paths '^(data/generated/|models/)' "自動生成と凍結した資産"
+forbid_paths() {
+  local re="$1" label="${2:-$1}" bad
+  check_key "forbid_paths $label"
+  if [ -z "${LOOP_BASE_COMMIT:-}" ]; then ng "実行開始時のコミットが記録されていない（gitリポで loopctl.py begin し直す）"; return; fi
+  bad=$(changed_files | grep -E -- "$re" || true)
+  if [ -z "$bad" ]; then ok "触ってはいけない場所（$label）は変わっていない"; else ng "触ってはいけない場所が変わった（$label）: $(echo "$bad" | head -10 | tr '\n' ' ')"; fi
+}
+
+# 未コミットの変更が無い（.claude/loop の記録は除く）。1作業1コミットの工程の後に置く
+need_clean_tree() {
+  local dirty
+  check_key "need_clean_tree"
+  dirty=$(git status --porcelain -- . ':!.claude/loop' | head -5)
+  if [ -z "$dirty" ]; then ok "未コミットの変更は無い（.claude/loop は除く）"; else ng "未コミットの変更が残っている: $(echo "$dirty" | tr '\n' ' ')"; fi
+}
+
+# HEAD がリモートの追跡ブランチまで push 済み（上流が無ければ不合格）
+need_pushed() {
+  check_key "need_pushed"
+  git fetch -q 2>/dev/null
+  local up; up=$(git rev-parse '@{u}' 2>/dev/null)
+  if [ -z "$up" ]; then ng "上流のブランチが無い（git push -u で設定する）"; return; fi
+  if [ "$(git rev-parse HEAD)" = "$up" ]; then ok "HEAD は push 済み"; else ng "HEAD が上流へ push されていない"; fi
+}
+
 # コマンドを回して終了コードで判定する。コマンドが未設定なら不合格（黙って通さない）
 need_cmd() {
   local label="$1" cmd="${2:-}"

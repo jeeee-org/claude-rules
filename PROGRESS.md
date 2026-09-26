@@ -15,6 +15,7 @@
 3. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ）
 
 ## 完了
+- [x] 2026-09-26 mtg-practiceから届いたループのひな型の改善メモ9件を全件反映（項目を順番に回す・一覧のファイル・コミットの工程とゲート・触ってはいけない場所・実行の間だけの上限・更新時の表示・振り返り・リンタの案内・記録の関門がメッセージの「記録なし:」を読む） → [checkpoint](checkpoints/2026-09-26-ループのひな型の初回お試しの反映-全件.md)
 - [x] 2026-09-26 `init-rules`のClaude版とCodex版を1枚にし（Claude版を土台に、どちらでも通じる書き方へ）、`install.sh`が両方へ同じものを配るようにした。Claudeで実走確認、Codexはモデルのエラーで未確認 → [checkpoint](checkpoints/2026-09-26-init-rulesの一本化-Claude版を土台に1枚へ.md)
 - [x] 2026-09-26 グローバルの共通ルールを廃止し、このPCの全23PJの`AGENTS.md`へ書き込んだ（`CLAUDE.md`は`AGENTS.md`へ統一、個人の運用は全部）。`install.sh`はグローバルのブロックを外す → [checkpoint](checkpoints/2026-09-26-グローバルの廃止-道具の側と全PJへの展開.md)
 - [x] 2026-09-26 導入をAIが選択肢で案内する`install-rules`スキルを追加し、PJ書き込みで個人の運用4つ（自動commit・自動push・worktree・ツール名）をPJごとに選べるようにした（コミットの書き方・memory・AI署名・§8・§9は必須）。PJは`AGENTS.md`に統一し`CLAUDE.md`は作らない → [checkpoint](checkpoints/2026-09-26-導入の案内と個人方針の選択-スキルとPJごとの選択.md)

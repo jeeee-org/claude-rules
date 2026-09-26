@@ -61,6 +61,34 @@ class GuardTest(unittest.TestCase):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding='utf-8')
 
+    # --- メッセージの「記録なし:」 ---
+
+    def test_メッセージに記録なしの行があれば通す(self):
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook("git commit -F - <<'EOF'\n整形のみ\n\n記録なし: 空白の整形のみ\nEOF", self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_mの引数の記録なしでも通す(self):
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook('git commit -am "整形" -m "記録なし: 空白の整形のみ"', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_Fで渡すファイルの記録なしでも通す(self):
+        self.touch('app.py', 'x = 2\n')
+        (self.repo.parent / 'msg.txt').write_text('整形\n\nNo-Record: whitespace only\n', encoding='utf-8')
+        r = run_hook(f'git commit -a -F {self.repo.parent / "msg.txt"}', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_書き込むファイルの中身の記録なしでは通さない(self):
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook("cat > note.txt <<'EOF'\n記録なし: これはファイルの中身\nEOF\ngit commit -am '直した'", self.repo)
+        self.assertEqual(r.returncode, 2)
+
+    def test_本文の途中の記録なしという語では通さない(self):
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook("git commit -F - <<'EOF'\n前回は記録なし: で通したが今回は違う\nEOF", self.repo)
+        self.assertEqual(r.returncode, 2)
+
     # --- 止める ---
 
     def test_記録が無いcommitは止まる(self):

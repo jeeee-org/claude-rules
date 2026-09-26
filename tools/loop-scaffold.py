@@ -122,7 +122,7 @@ def update(target: Path, dry: bool, old_dir: Path | None, name: str | None = Non
     profile, rev = meta["profile"], meta["rev"]
     nm = Naming(meta.get("name"), profile)
     new_rev = source_rev()
-    created, updated, same, manual = [], [], [], []
+    created, updated, same, manual, kept = [], [], [], [], []
     for rel0, src in plan(profile).items():
         rel = nm.path(rel0)
         dst = target / rel
@@ -136,6 +136,9 @@ def update(target: Path, dry: bool, old_dir: Path | None, name: str | None = Non
             old = old_template(rev, src, old_dir)
             if old is not None and dst.read_bytes() == nm.content(old):
                 updated.append(rel)
+            elif old is not None and nm.content(old) == new:
+                kept.append(rel)  # 手を入れてあるが、ひな型側はこの間に変わっていない（取り込むものが無い）
+                continue
             else:
                 manual.append((rel, src))
                 continue
@@ -153,6 +156,8 @@ def update(target: Path, dry: bool, old_dir: Path | None, name: str | None = Non
             for x in xs:
                 print(f"    {x}")
     print(f"  変わりなし: {len(same)}件")
+    if kept:
+        print(f"  手を入れてある（ひな型側の変更なし・取り込むものは無い）: {len(kept)}件: " + ", ".join(str(x) for x in kept))
     if added:
         print(f"  settings.json: {', '.join(added)} を足しました")
     if manual:
@@ -163,6 +168,7 @@ def update(target: Path, dry: bool, old_dir: Path | None, name: str | None = Non
     if not dry:
         print("\n実行中のループがあれば、`loopctl.py finish` してから `begin` し直す（新しい状態の項目は begin で作られる）")
     warn_ignored(target, nm)
+    warn_linters(target)
     return 0
 
 
@@ -219,6 +225,44 @@ def warn_ignored(target: Path, nm: Naming) -> None:
         print(f"\n※ 次のファイルがgitの無視対象です: {', '.join(ignored)}")
         print("  フック・ループの定義・実行中の状態は、このworktreeにしか無い。")
         print("  ループはこのworktreeから起動し、終わってもworktreeを消さない（他のworktreeやcloneでは効かない）")
+
+
+# 入れた先のリンタ設定。ひな型のPython・シェルはリポのリンタ設定に合わせて書いていないので、対象から外してもらう
+LINTERS = (
+    ("pyproject.toml", ("[tool.ruff", "[tool.flake8", "[tool.pylint"), "ruff: [tool.ruff] に extend-exclude = [\".claude\"]"),
+    ("ruff.toml", ("",), "ruff: extend-exclude = [\".claude\"]"),
+    (".ruff.toml", ("",), "ruff: extend-exclude = [\".claude\"]"),
+    (".flake8", ("",), "flake8: extend-exclude = .claude"),
+    ("setup.cfg", ("[flake8]",), "flake8: [flake8] に extend-exclude = .claude"),
+    ("tox.ini", ("[flake8]",), "flake8: [flake8] に extend-exclude = .claude"),
+    ("eslint.config.js", ("",), "eslint: ignores に \".claude/**\""),
+    ("eslint.config.mjs", ("",), "eslint: ignores に \".claude/**\""),
+    (".eslintrc.json", ("",), "eslint: ignorePatterns に \".claude/\""),
+    (".eslintrc.js", ("",), "eslint: ignorePatterns に \".claude/\""),
+    ("biome.json", ("",), "biome: files.ignore に \".claude\""),
+)
+
+
+def linter_hints(target: Path) -> list[str]:
+    """入れた先にリンタの設定があり、まだ .claude を外していなければ、その外し方。"""
+    out = []
+    for name, marks, hint in LINTERS:
+        f = target / name
+        if not f.is_file():
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        if any(m in text for m in marks) and ".claude" not in text:
+            out.append(f"{name}（{hint}）")
+    return out
+
+
+def warn_linters(target: Path) -> None:
+    hints = linter_hints(target)
+    if hints:
+        print("\n※ リンタの設定があります。ひな型（.claude/ の下のPython・シェル）はこのリポのリンタ設定に合わせて"
+              "書いていないので、工程役に「リンタを通す」と指示すると毎回落ちます。対象から .claude を外してください:")
+        for h in hints:
+            print(f"  - {h}")
 
 
 def main(argv=None) -> int:
@@ -292,6 +336,7 @@ def main(argv=None) -> int:
         print(f"  3. {d}/pipeline.json の工程をこのリポに合わせる")
         print(f"  4. claude --agent {nm.agent('loop-conductor')} で回す（--agent で起動しないとStopフックの早止まり対策は効かない）")
     warn_ignored(target, nm)
+    warn_linters(target)
     return 0
 
 
