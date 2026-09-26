@@ -2,7 +2,7 @@
 
 全PJ共通の下地としてPJへ書き込んだもの。このブロックの外に書くPJ固有の指示が優先する。
 <!-- if:claude+codex -->
-PJのルールはこの`AGENTS.md`に統一する（Claude CodeもCodexも直接読む）。`CLAUDE.md`は作らず、既にあるなら先頭の`@AGENTS.md`で繋ぐ（`CLAUDE.md`があるとClaude Codeは`AGENTS.md`を読まない）。
+PJに`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを読まなくなる）。
 <!-- endif -->
 
 ## 1. 進行管理：4軸 + checkpoint（共通骨格）
