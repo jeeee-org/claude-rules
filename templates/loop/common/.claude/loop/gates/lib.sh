@@ -23,7 +23,7 @@ need_match()   { check_key "need_match $1 $2"; if grep -Eq -- "$2" "$1" 2>/dev/n
 forbid_match() { check_key "forbid_match $1 $2"; if grep -Eqn -- "$2" "$1" 2>/dev/null; then ng "$1 に禁止パターン /$2/ がある: $(grep -En -- "$2" "$1" | head -3 | tr '\n' ' ')"; else ok "$1 に /$2/ は無い"; fi; }
 
 # idが語として出るか（英数字と_に挟まれていない）。部分一致だと短いid（opt）が別の語（options）に当たって
-# 「ある」と判定する（mtg-practiceでテスト前の項目がテスト済と判定された）。-w はロケールで日本語も語の文字に数えるので使わない
+# 「ある」と判定する（個人の開発PJでテスト前の項目がテスト済と判定された）。-w はロケールで日本語も語の文字に数えるので使わない
 has_id() { # has_id <id> <ファイル>
   local esc; esc=$(printf '%s' "$1" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
   grep -Eq -- "(^|[^A-Za-z0-9_])${esc}([^A-Za-z0-9_]|\$)" "$2" 2>/dev/null

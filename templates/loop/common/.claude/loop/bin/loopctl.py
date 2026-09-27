@@ -713,7 +713,7 @@ def cmd_judge(a):
             raise LoopError(f"{a.step} は判断待ちではありません（いま {LABEL[s['status']]}）")
         sd = step_def(p, a.step)
         # 回答が無い・選択肢の外（yes/noの問いにpassなど）は、人へ回す前に判断役へ1回だけ選び直させる。
-        # そのまま人へ回すと推奨が失敗側に化け、`answer --recommended`が中身を見ずに差し戻しになる（mtg-practiceで3件）
+        # そのまま人へ回すと推奨が失敗側に化け、`answer --recommended`が中身を見ずに差し戻しになる（個人の開発PJで3件）
         bad = [f"{q['id']}（答え{json.dumps((got.get(q['id']) or {}).get('answer'), ensure_ascii=False)}・選択肢 {' / '.join(q['answers'])}）"
                for q in sd["judge_questions"] if (got.get(q["id"]) or {}).get("answer") not in q["answers"]]
         if bad and s.get("judge_retry") != s.get("rework", 0):

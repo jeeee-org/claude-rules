@@ -2,7 +2,7 @@
 """PreToolUseフック（Bash）: ループの実行中、工程役・レビュー役が共有の作業ツリーを巻き戻す git を止める。
 
 直列の工程では、作業ツリーの未コミットの変更がその工程の唯一の成果物になる。工程役が変異テストの途中で
-`git checkout`して成果物を消した・レビュー役が比べるために`git stash`した例がある（mtg-practice）。
+`git checkout`して成果物を消した・レビュー役が比べるために`git stash`した例がある（個人の開発PJ）。
 消えると気づかれずに提出されうるので、次を止める:
 
     git checkout / switch / stash（list・show は除く） / reset / restore（--staged だけは除く） / clean
