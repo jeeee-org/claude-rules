@@ -149,13 +149,15 @@ need_clean_tree() {
   if [ -z "$dirty" ]; then ok "未コミットの変更は無い（.claude/loop は除く）"; else ng "未コミットの変更が残っている: $(echo "$dirty" | tr '\n' ' ')"; fi
 }
 
-# HEAD がリモートの追跡ブランチまで push 済み（上流が無ければ不合格）
+# HEAD がリモートの追跡ブランチに含まれる（push 済み）。上流が無ければ不合格。
+# 「HEAD＝上流」でなく「上流に含まれる」で見る（複数人が同じブランチへ自動でpushするPJで、
+# ほかのメンバーが後からpushしただけで不合格になったため）
 need_pushed() {
   check_key "need_pushed"
   git fetch -q 2>/dev/null
   local up; up=$(git rev-parse '@{u}' 2>/dev/null)
   if [ -z "$up" ]; then ng "上流のブランチが無い（git push -u で設定する）"; return; fi
-  if [ "$(git rev-parse HEAD)" = "$up" ]; then ok "HEAD は push 済み"; else ng "HEAD が上流へ push されていない"; fi
+  if git merge-base --is-ancestor HEAD "$up"; then ok "HEAD は push 済み（上流に含まれる）"; else ng "HEAD が上流へ push されていない"; fi
 }
 
 # コマンドを回して終了コードで判定する。コマンドが未設定なら不合格（黙って通さない）

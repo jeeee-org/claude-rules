@@ -955,6 +955,28 @@ class ScopeGateTest(unittest.TestCase):
         self.assertEqual(p.returncode, 1)
         self.assertIn('上流のブランチが無い', p.stdout)
 
+    def test_push済みはHEADが上流に含まれれば通す(self):
+        self.git('add', '-A'); self.git('commit', '-qm', 'ひな型')
+        remote = Path(self._tmp.name + '-remote.git')
+        self.addCleanup(shutil.rmtree, remote, True)
+        subprocess.run(['git', 'init', '-q', '--bare', str(remote)], check=True)
+        self.git('remote', 'add', 'origin', str(remote))
+        self.git('push', '-q', '-u', 'origin', 'HEAD')
+        # ほかのメンバーが後からpushした（上流がHEADより先へ進んだ）
+        other = Path(self._tmp.name + '-other')
+        self.addCleanup(shutil.rmtree, other, True)
+        subprocess.run(['git', 'clone', '-q', str(remote), str(other)], check=True)
+        for a in (['config', 'user.email', 't@t'], ['config', 'user.name', 't'], ['commit', '-q', '--allow-empty', '-m', 'x'], ['push', '-q']):
+            subprocess.run(['git', '-C', str(other), *a], check=True, capture_output=True)
+        env = dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root))
+        script = '. "$LOOP_DIR/gates/lib.sh"; need_pushed; gate_end'
+        p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.git('commit', '-q', '--allow-empty', '-m', 'まだpushしていない')
+        p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('push されていない', p.stdout)
+
 
 class SharedTreeGuardTest(unittest.TestCase):
     """PreToolUseフック: 実行中の工程役・レビュー役が共有の作業ツリーを巻き戻す git を止める（本物のgitリポで）。"""
@@ -1212,6 +1234,28 @@ class LimitAndRetroTest(PerItemTest):
             v['status'] = 'done'
         (self.loop / 'state.json').write_text(json.dumps(st))
         self.assertIn('・全工程完了', self.ctl('retro').stdout)
+
+
+    def test_項目の経過は本線と枝の人待ちを含む全体を分けて出す(self):
+        self.ctl('begin', '--items', 'q1')
+        st = self.state()
+        mk = lambda a, b: {'status': 'done', 'shards': {}, 'rework': 0, 'blocker': None,
+                           'notes': [{'t': a, 'text': '着手 shard=main'}, {'t': b, 'text': '完了'}]}
+        st['steps']['q1/decide'] = mk(100, 200)
+        st['steps']['q1/fix'] = mk(200, 300)
+        st['steps']['q1/ask'] = mk(250, 5000)  # 枝の人待ち
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        x = json.loads(self.ctl('retro', '--json').stdout)['items'][0]
+        self.assertEqual((x['elapsed_main'], x['elapsed']), (200, 4900))
+        self.assertIn('本線200s・人待ちを含む全体4900s', self.ctl('retro').stdout)
+
+    def test_Writeが止められる成果物の名前はbeginで知らせる(self):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['steps'][0]['outputs'] = ['loop-out/summary.md']
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+        p = self.ctl('begin', '--items', 'q1')
+        self.assertIn('loop-out/summary.md', p.stderr)
+        self.assertNotIn('decide.md', p.stderr)
 
 
 class UpdateTest(unittest.TestCase):

@@ -89,6 +89,8 @@ def locked():
 
 
 ITEM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Claude Code（2.1.283で確認）は、サブエージェントの Write がこの名前の .md を書くのを止める（報告は最終メッセージで返させるため）
+SUBAGENT_BLOCKED_MD = re.compile(r"^(REPORT|SUMMARY|FINDINGS|ANALYSIS).*\.md$", re.I)
 
 
 def subst(x, item: str):
@@ -434,6 +436,11 @@ def cmd_begin(a):
             st["items"] = items
         save_json(STATE, st)
     print(render(st, p))
+    blocked = sorted({o for sd in p["steps"] for o in sd.get("outputs", []) if SUBAGENT_BLOCKED_MD.match(Path(o).name)})
+    if blocked:
+        print("※ 成果物の名前が report・summary・findings・analysis で始まる .md です: " + ", ".join(blocked)
+              + "。Claude Codeはサブエージェントの Write でこの名前を止める（工程役はBashで書くことになる）。"
+              "避けるなら pipeline.json の outputs の名前を変える", file=sys.stderr)
 
 
 def parse_items_text(text: str) -> list[str]:
@@ -1336,14 +1343,19 @@ def retro_data(st: dict, p: dict) -> dict:
             for k in keys or [body[:60]]:
                 reasons[f"{kind}: {k}"] = reasons.get(f"{kind}: {k}", 0) + 1
     items = []
+    tmpl = (p.get("per_item") or {}).get("steps", [])
+    last = tmpl[-1]["id"] if tmpl else None  # 型の最後の工程（serialで次の項目の前提になる本線の終わり）
     for it in st.get("items", []):
         own = {sid: s for sid, s in steps.items() if sid.startswith(it + "/")}
         ts = [step_times(s) for s in own.values()]
         starts = [a for a, _ in ts if a]
         done = all(s["status"] == "done" for s in own.values()) and own
         ends = [b for _, b in ts if b]
+        main_end = step_times(own[f"{it}/{last}"])[1] if last and f"{it}/{last}" in own else None
         items.append({"item": it, "done": bool(done), "rework": sum(s.get("rework", 0) for s in own.values()),
                       "elapsed": int(max(ends) - min(starts)) if done and starts and ends else None,
+                      # 本線（型の最後の工程が終わるまで）。枝の人待ちの時間を含まない
+                      "elapsed_main": int(main_end - min(starts)) if main_end and starts else None,
                       "status": "完了" if done else next((LABEL[s["status"]] for s in own.values() if s["status"] != "done"), "未着手")})
     rows = [r for r in load_judgments() if r.get("run") == st["run_id"]]
     asks = [r for r in rows if r.get("kind") == "ask"]
@@ -1367,6 +1379,12 @@ def retro_data(st: dict, p: dict) -> dict:
     }
 
 
+def item_elapsed(x: dict) -> str:
+    """項目の経過。本線と全体が違う（枝の人待ちがある）時は両方出す。"""
+    m, t = x.get("elapsed_main"), x["elapsed"]
+    return f"本線{m}s・人待ちを含む全体{t}s" if m is not None and m != t else f"{t}s"
+
+
 def cmd_retro(a):
     """実行の振り返りの数字（項目ごとの経過・差し戻しの理由の分布・催促・人待ち・判断役の誤り）。"""
     st, p = state(), pipeline()
@@ -1380,7 +1398,7 @@ def cmd_retro(a):
     if d["items"]:
         done = [x for x in d["items"] if x["done"]]
         out.append(f"- 項目 {len(done)}/{len(d['items'])} 完了: " + "、".join(
-            f"{x['item']}（{x['elapsed']}s・差し戻し{x['rework']}）" if x["done"] else f"{x['item']}（{x['status']}）" for x in d["items"]))
+            f"{x['item']}（{item_elapsed(x)}・差し戻し{x['rework']}）" if x["done"] else f"{x['item']}（{x['status']}）" for x in d["items"]))
     out.append(f"- 差し戻し {d['rework_total']}回" + (f"（{'・'.join(f'{k}{v}' for k, v in d['rework_by_kind'].items())}）" if d["rework_by_kind"] else ""))
     for k, v in d["rework_reasons"]:
         out.append(f"  - {k}: {v}回")
