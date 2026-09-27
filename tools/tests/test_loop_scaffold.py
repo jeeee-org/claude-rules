@@ -83,6 +83,7 @@ class ScaffoldTest(unittest.TestCase):
         self.assertEqual(len(cmds), 2)
         self.assertIn('echo mine', cmds)
         self.assertEqual(len(data['hooks']['SubagentStop']), 1)
+        self.assertEqual([g['matcher'] for g in data['hooks']['PreToolUse']], ['Bash'])
         self.assertTrue((self.root / '.claude/settings.json.bak').exists())
 
     def test_to_doはリポ単位で指定した時だけ有効にする(self):
@@ -307,11 +308,40 @@ class LoopRunTest(unittest.TestCase):
         self.assertEqual(s['status'], 'in_progress')
         self.assertIn('範囲が違う', s['notes'][-2]['text'])
 
-    def test_選択肢の外の答えは人へ回す(self):
+    def test_選択肢の外の答えは判断役へ1回だけ選び直させ2回目は推奨なしで人へ回す(self):
         self.to_judge()
-        ans = {'answers': [{'id': 'req-intent', 'answer': 'maybe', 'confidence': 0.99}]}
+        ans = {'answers': [{'id': 'req-intent', 'answer': 'pass', 'confidence': 0.99}]}
+        p = self.ctl('judge', 'requirements', '--answers', json.dumps(ans), ok=False)
+        self.assertIn('選択肢の外', p.stderr)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'judge')
+        self.assertFalse((self.loop / 'judge/judgments.jsonl').exists())
         self.ctl('judge', 'requirements', '--answers', json.dumps(ans))
         self.assertTrue(self.state()['steps']['requirements']['needs_human'])
+        pend = json.loads(self.ctl('pending', '--json').stdout)
+        self.assertIsNone(pend[0]['recommend'])
+        # 推奨が無いので、推奨どおりの一括の答えでは中身を見ない差し戻しにならない
+        self.ctl('answer', '--recommended', ok=False)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'blocked')
+
+    def test_差し戻し後の判断ではもう一度選び直させる(self):
+        self.to_judge()
+        bad = {'answers': [{'id': 'req-intent', 'answer': 'pass', 'confidence': 0.99}]}
+        self.ctl('judge', 'requirements', '--answers', json.dumps(bad), ok=False)
+        self.ctl('judge', 'requirements', '--answers', json.dumps({'answers': [{'id': 'req-intent', 'answer': 'no', 'confidence': 0.95}]}))
+        self.ctl('submit', 'requirements')
+        self.ctl('review', 'requirements', 'pass')
+        self.ctl('gate', 'requirements')
+        p = self.ctl('judge', 'requirements', '--answers', json.dumps(bad), ok=False)
+        self.assertIn('選択肢の外', p.stderr)
+
+    def test_人の答えが続けて判断役と同じ問いは見直しを促す(self):
+        rows = [{'id': f'a{i}', 't': i, 'step': 's', 'question': 'q', 'answer': 'yes', 'confidence': 0.6, 'human_answer': 'yes'}
+                for i in range(10)]
+        rows.append({'id': 'b', 't': -1, 'step': 's', 'question': 'r', 'answer': 'yes', 'confidence': 0.6, 'human_answer': 'no'})
+        (self.loop / 'judge/judgments.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in rows))
+        out = self.ctl('calibrate').stdout
+        self.assertIn('直近10件続けて', out)
+        self.assertEqual(out.count('直近'), 1)
 
     def test_較正は正答率が目標に届く最小の確信度を閾値にする(self):
         rows = []
@@ -553,6 +583,44 @@ class LoopRunTest(unittest.TestCase):
         p = self.run_test_gate('| 要件 | テスト | 結果 |\n|---|---|---|\n| REQ-01 | test_login | 不合格 |\n')
         self.assertEqual(p.returncode, 1)
         self.assertIn('REQ-01', p.stdout)
+
+    def test_テスト報告のidは語の境界で照合する(self):
+        (self.root / 'docs/loop').mkdir(parents=True, exist_ok=True)
+        p = self.run_test_gate('| 要件 | テスト | 結果 |\n|---|---|---|\n| REQ-011 | test_x | 合格 |\n')
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('REQ-01 の行が表に無い', p.stdout)
+
+    def test_idの網羅は部分一致で満たさない(self):
+        (self.root / 'a.md').write_text('opt\nREQ-01\n')
+        (self.root / 'b.md').write_text('options\nREQ-01の確認\n')
+        env = dict(self.env, LOOP_STEP='x', REPO_ROOT=str(self.root))
+        script = '. "$LOOP_DIR/gates/lib.sh"; need_all_ids a.md b.md "opt|REQ-[0-9]+"; gate_end'
+        p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('無いid: opt', p.stdout)
+        self.assertNotIn('REQ-01 ', p.stdout.split('無いid:')[1])
+        sys.path.insert(0, str(self.loop / 'bin'))
+        import rules
+        ok, msg = rules.evaluate({'kind': 'need_all_ids', 'args': ['a.md', 'b.md', 'opt|REQ-[0-9]+']}, self.root)
+        self.assertFalse(ok)
+        self.assertEqual(msg, 'b.md に無いid: opt')
+
+    def test_ゲートの空打ちは状態も記録も変えない(self):
+        self.ctl('begin')
+        p = self.ctl('gate', 'requirements', '--dry-run', ok=False)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('--dry-run', p.stdout)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'pending')
+        self.assertFalse((self.loop / 'stats/gates.jsonl').exists())
+        self.write_requirements()
+        self.assertEqual(self.ctl('gate', 'requirements', '--dry-run').returncode, 0)
+
+    def test_閉じた実行の人待ちは閉じた実行の残りと出る(self):
+        self.ctl('begin')
+        self.ctl('block', 'requirements', '外部の返事待ち')
+        self.ctl('finish')
+        self.assertIn('閉じた実行', self.ctl('pending').stdout)
+        self.assertIn('閉じた実行の残り', self.ctl('status').stdout)
 
     def test_テスト報告に表が無ければ落ちる(self):
         p = self.run_test_gate('REQ-01 は確かめました。合格です。\n')
@@ -888,6 +956,62 @@ class ScopeGateTest(unittest.TestCase):
         self.assertIn('上流のブランチが無い', p.stdout)
 
 
+class SharedTreeGuardTest(unittest.TestCase):
+    """PreToolUseフック: 実行中の工程役・レビュー役が共有の作業ツリーを巻き戻す git を止める（本物のgitリポで）。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name).resolve()
+        g = lambda *a: subprocess.run(['git', '-C', str(self.root), *a], capture_output=True, text=True, check=True)
+        g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't')
+        (self.root / 'a.txt').write_text('a\n')
+        (self.root / 'sub').mkdir()
+        g('add', '-A'); g('commit', '-qm', 'init')
+        scaffold(self.root, '--profile', 'dev', '--no-settings')
+        self.loop = self.root / '.claude/loop'
+        self.env = dict(os.environ, LOOP_DIR=str(self.loop))
+        self.other = Path(self._tmp.name + '-wt')
+        g('worktree', 'add', '-q', str(self.other), 'HEAD')
+
+    def tearDown(self):
+        shutil.rmtree(self.other, ignore_errors=True)
+        self._tmp.cleanup()
+
+    def ctl(self, *args):
+        subprocess.run([sys.executable, str(self.loop / 'bin/loopctl.py'), *args], env=self.env, check=True, capture_output=True)
+
+    def denied(self, cmd, agent='dev-implement', cwd=None):
+        payload = {'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': cmd},
+                   'cwd': str(cwd or self.root), 'agent_type': agent}
+        p = subprocess.run([sys.executable, str(self.loop / 'bin/shared-tree-guard.py')], input=json.dumps(payload),
+                           capture_output=True, text=True, env=self.env, cwd=self.root)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return bool(p.stdout.strip()) and json.loads(p.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny'
+
+    def test_実行中の工程役とレビュー役の巻き戻しを止める(self):
+        self.ctl('begin')
+        for cmd in ('git stash', 'git checkout -- a.txt', 'npm test && git reset --hard', 'git restore a.txt',
+                    'cd sub; git -C .. clean -fd', 'X=1 git switch main'):
+            self.assertTrue(self.denied(cmd), cmd)
+        self.assertTrue(self.denied('git stash', agent='review-implement'))
+
+    def test_読むだけの操作と外の作業ツリーは通す(self):
+        self.ctl('begin')
+        for cmd in ('git stash list', 'git diff', 'git show HEAD:a.txt', 'git restore --staged a.txt',
+                    f'git worktree add {self.other}-x HEAD', f'git -C {self.other} checkout -- a.txt',
+                    f'cd {self.other} && git stash', 'echo "git stash"'):
+            self.assertFalse(self.denied(cmd), cmd)
+
+    def test_実行の外と統括役とループ外のエージェントには口を出さない(self):
+        self.assertFalse(self.denied('git stash'))  # 実行が無い
+        self.ctl('begin')
+        self.assertFalse(self.denied('git stash', agent='loop-conductor'))
+        self.assertFalse(self.denied('git stash', agent=''))
+        self.assertFalse(self.denied('git stash', agent='Explore'))
+        self.ctl('finish')
+        self.assertFalse(self.denied('git stash'))
+
+
 class PerItemTest(unittest.TestCase):
     """per_item: 項目の一覧 × 工程の型を begin で展開し、項目ごとに独立して止まる。"""
 
@@ -1082,6 +1206,12 @@ class LimitAndRetroTest(PerItemTest):
         text = self.ctl('retro').stdout
         self.assertIn('振り返り', text)
         self.assertIn('差し戻し 2回', text)
+        self.assertIn('・進行中', text)
+        st = self.state()
+        for v in st['steps'].values():
+            v['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        self.assertIn('・全工程完了', self.ctl('retro').stdout)
 
 
 class UpdateTest(unittest.TestCase):

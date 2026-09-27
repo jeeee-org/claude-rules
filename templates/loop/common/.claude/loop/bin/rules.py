@@ -80,5 +80,7 @@ def evaluate(check: dict, repo: Path) -> tuple[bool, str]:
     src, dst = _read(repo, a[0]), _read(repo, a[1])
     if src is None or dst is None:
         return False, f"{a[0]} か {a[1]} が読めない"
-    missing = sorted(i for i in set(re.findall(a[2], src)) if i not in dst)
+    # 語の境界で照合する（部分一致だと短いidが別の語に当たる。gates/lib.sh の need_all_ids と同じ）
+    missing = sorted(i for i in set(re.findall(a[2], src))
+                     if not re.search(r"(?<![A-Za-z0-9_])" + re.escape(i) + r"(?![A-Za-z0-9_])", dst))
     return (not missing), (f"{a[1]} に無いid: {' '.join(missing)}" if missing else f"{a[1]} に全idがある")

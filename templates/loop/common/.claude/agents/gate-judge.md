@@ -52,7 +52,7 @@ color: yellow
 
 ## 返し方
 
-次のJSONだけを返す（前後に文章を付けない）。`answer`は問いの`answers`に挙がった文字列そのまま。
+次のJSONだけを返す（前後に文章を付けない）。**`answer`は問いの`answers`に挙がった文字列そのまま**。`yes/no`の問いに`pass`、`pass/fail`の問いに`yes`のように、別の問いの語で答えない（loopctlが選択肢の外として断り、答え直しになる）。答える前に、問いごとの`answers`をもう一度見る。
 
 ```json
 {"answers": [{"id": "<問いのid>", "answer": "<選択肢>", "confidence": 0.0, "reason": "<根拠を1文。どのファイルのどこを見たか>"}]}

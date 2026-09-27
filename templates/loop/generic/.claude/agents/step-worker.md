@@ -36,7 +36,9 @@ STATUS: done | blocked | partial
 推奨: <A|B>（<理由を1文>）
 ```
 
-状態（loopctl）は統括役が動かす。あなたは`loopctl.py`を呼ばない（工程の定義を読む`loopctl.py show <工程>`だけは使ってよい）。
+状態（loopctl）は統括役が動かす。あなたは`loopctl.py`を呼ばない（工程の定義を読む`loopctl.py show <工程>`と、提出前にゲートを試す`loopctl.py gate <工程> --dry-run`だけは使ってよい。dry-runは状態も記録も変えない）。
+
+- **共有の作業ツリーを巻き戻さない**: 未コミットの変更がこの工程の成果物。壊して試す（変異テスト）・前と比べる時は、作業ツリーの外（`git worktree add <外の場所> HEAD`した場所か写し）で行う。`git checkout`・`stash`・`reset`・`restore`・`clean`・`switch`をこの作業ツリーでしない（フックが止める）。比べるだけなら`git diff`・`git show <版>:<パス>`で足りる。
 
 - **作業を増やさない**: 新しい工程・作業項目・issue・PRを起こさない。気づいた改善や別件は`.claude/loop/candidates.md`へ1行足すだけにする（起票するかは人が決める。ループの仕組みそのものの課題は「ループの仕組みの課題」節へ`[ひな型]`付きで）。
 - **ループ自身を改修しない**: `.claude/loop/`・`.claude/agents/`・`.claude/settings.json`を書き換えない（上の`candidates.md`へ1行足すのは除く。ゲートが機械で確かめ、変わっていれば不合格になる）。要ると思ったら`STATUS: blocked`で人へ返す。

@@ -21,15 +21,6 @@ import loopctl as lc  # noqa: E402
 STATUS_RE = re.compile(r"^\s*STATUS:\s*(done|blocked|partial)\b", re.M)
 
 
-def loop_agents(p: dict) -> set[str]:
-    names = {p.get("judge", {}).get("agent", "gate-judge")}
-    for s in p.get("steps", []):
-        for k in ("worker", "reviewer"):
-            if s.get(k):
-                names.add(s[k])
-    return names
-
-
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -41,7 +32,7 @@ def main() -> int:
     if not st or st.get("finished"):
         return 0
     agent = data.get("agent_type") or ""
-    if agent not in loop_agents(p) or data.get("stop_hook_active"):
+    if agent not in lc.loop_agents(p) or data.get("stop_hook_active"):
         return 0
     msg = data.get("last_assistant_message") or ""
     if agent == p.get("judge", {}).get("agent", "gate-judge"):

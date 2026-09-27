@@ -7,7 +7,7 @@
 
 - ひな型は templates/loop/common と templates/loop/<profile> を重ねたもの
 - 既にあるファイルは上書きしない（--force で上書き）。入れた後の微調整は対象リポで行う前提
-- 対象の .claude/settings.json に Stop / SubagentStop フックを足す（同じコマンドがあれば足さない。控えは .bak）
+- 対象の .claude/settings.json に Stop / SubagentStop フックと、共有の作業ツリーを巻き戻す git を止める PreToolUse フックを足す（同じコマンドがあれば足さない。控えは .bak）
 - --enable-todo で、そのリポだけto-doツール（CLAUDE_CODE_ENABLE_TODO_TOOLS=1）を有効にする（全体では無効のまま）
 - 何をどこから入れたかを .claude/loop/.scaffold.json に残す（後でひな型との差分を見るため）
 - --update は .claude/loop/.scaffold.json の版（入れた時の版）と突き合わせて更新する。
@@ -82,10 +82,12 @@ class Naming:
             t = re.sub(EDGE_L + re.escape(a) + EDGE_R, self.agent(a), t)
         return t.encode("utf-8")
 
-    def hooks(self) -> dict[str, str]:
+    def hooks(self) -> list[tuple[str, str, str | None]]:
+        """(イベント, コマンド, matcher)。PreToolUseは共有の作業ツリーを巻き戻す git を止める。"""
         d = self.loop_rel.as_posix()
-        return {"Stop": f'python3 "${{CLAUDE_PROJECT_DIR}}/{d}/bin/stop-guard.py"',
-                "SubagentStop": f'python3 "${{CLAUDE_PROJECT_DIR}}/{d}/bin/subagent-report-guard.py"'}
+        return [("Stop", f'python3 "${{CLAUDE_PROJECT_DIR}}/{d}/bin/stop-guard.py"', None),
+                ("SubagentStop", f'python3 "${{CLAUDE_PROJECT_DIR}}/{d}/bin/subagent-report-guard.py"', None),
+                ("PreToolUse", f'python3 "${{CLAUDE_PROJECT_DIR}}/{d}/bin/shared-tree-guard.py"', "Bash")]
 
     def shared(self) -> tuple[str, ...]:
         # git の無視対象だと、フックやループの定義がそのworktreeにしか無い（他のworktree・cloneでは効かない）
@@ -181,7 +183,7 @@ def source_rev() -> str:
 
 
 def merge_settings(path: Path, dry: bool, hooks_on: bool = True, todo: bool = False,
-                   hooks: dict[str, str] | None = None) -> list[str]:
+                   hooks: list[tuple[str, str, str | None]] | None = None) -> list[str]:
     data = {}
     if path.exists():
         try:
@@ -193,11 +195,13 @@ def merge_settings(path: Path, dry: bool, hooks_on: bool = True, todo: bool = Fa
         data.setdefault("env", {})["CLAUDE_CODE_ENABLE_TODO_TOOLS"] = "1"
         added.append("env.CLAUDE_CODE_ENABLE_TODO_TOOLS")
     reg = data.setdefault("hooks", {}) if hooks_on else {}
-    for event, cmd in ((hooks or Naming(None, "dev").hooks()).items() if hooks_on else ()):
+    for event, cmd, matcher in ((hooks or Naming(None, "dev").hooks()) if hooks_on else ()):
         groups = reg.setdefault(event, [])
         present = any(h.get("command") == cmd for g in groups for h in g.get("hooks", []))
         if not present:
-            groups.append({"hooks": [{"type": "command", "command": cmd, "timeout": 30}]})
+            g = {"matcher": matcher} if matcher else {}
+            g["hooks"] = [{"type": "command", "command": cmd, "timeout": 30}]
+            groups.append(g)
             added.append(event)
     if added and not dry:
         path.parent.mkdir(parents=True, exist_ok=True)

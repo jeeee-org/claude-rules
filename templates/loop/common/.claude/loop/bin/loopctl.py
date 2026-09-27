@@ -227,6 +227,16 @@ def note(stp: dict, text: str) -> None:
 
 # ---------- 集計（Stopフックからも使う） ----------
 
+def loop_agents(p: dict) -> set[str]:
+    """ループのサブエージェント（工程役・レビュー役・判断役）の名前。フックが口を出す相手。"""
+    names = {p.get("judge", {}).get("agent", "gate-judge")}
+    for s in p.get("steps", []):
+        for k in ("worker", "reviewer"):
+            if s.get(k):
+                names.add(s[k])
+    return names
+
+
 def waiting_on_blocked(st: dict, p: dict | None, sid: str, seen=None) -> str | None:
     """この工程の前提（間接も含む）に止まっている工程があれば、その工程id。"""
     if p is None:
@@ -275,6 +285,8 @@ def render(st: dict, p: dict) -> str:
         lines.append(f"※ {why}（次の着手で止まります）")
     if st.get("halted"):
         lines.append(f"※ {st['halted']}（`resume`で再開）")
+    if st.get("finished") and any(s["status"] != "done" for s in st["steps"].values()):
+        lines.append("※ 閉じた実行です。止まっている・未完了の工程は閉じた実行の残り（次の `begin` で消える）")
     el = int(now() - st["started_at"])
     budget = effective_budget(st, p)
     lines.append(f"経過 {el}s" + (f" / 予算 {budget}s" if budget else "")
@@ -596,14 +608,11 @@ def gate_reason(out: str) -> str:
     return lines[-1] if lines else "（出力なし）"
 
 
-def cmd_gate(a):
-    p = pipeline()
-    st = state()
-    if st_step(st, a.step)["status"] != "gate":
-        raise LoopError(f"{a.step} はゲート待ちではありません（いま {LABEL[st['steps'][a.step]['status']]}）")
-    ok, out = run_gate(p, a.step)  # ゲートは長く走りうるのでロックの外で実行する
-    sd = step_def(p, a.step)
-    tkey = sd.get("template", a.step)
+def gate_check(p: dict, sid: str) -> tuple[bool, str]:
+    """ゲートのスクリプト・採用中のルール・ループ自身の改修の検査をまとめて回す（状態は変えない）。"""
+    ok, out = run_gate(p, sid)
+    sd = step_def(p, sid)
+    tkey = sd.get("template", sid)
     promoted = [r for r in load_rules() if r["status"] == "promoted" and r["step"] == tkey]
     if promoted:
         lines = ["判断役から昇格したルール:"]
@@ -617,6 +626,22 @@ def cmd_gate(a):
         out += "\nループ自身の改修（実行中は禁止。人が直したなら `loopctl.py accept-self`）:\n" + "\n".join(
             f"  ✖ {f} が実行開始後に変わった  〔loop-self〕" for f in changed_self)
         ok = False
+    return ok, out
+
+
+def cmd_gate(a):
+    p = pipeline()
+    st = state()
+    if a.dry_run:
+        st_step(st, a.step)
+        ok, out = gate_check(p, a.step)
+        print(out)
+        print(f"--- ゲート{'通過' if ok else '不合格'}の見込み（--dry-run。状態も記録も変えていない）")
+        sys.exit(0 if ok else 1)
+    if st_step(st, a.step)["status"] != "gate":
+        raise LoopError(f"{a.step} はゲート待ちではありません（いま {LABEL[st['steps'][a.step]['status']]}）")
+    ok, out = gate_check(p, a.step)  # ゲートは長く走りうるのでロックの外で実行する
+    tkey = step_def(p, a.step).get("template", a.step)
     record_gate_stats(state()["run_id"], tkey, out)
     with locked():
         st = state()
@@ -679,10 +704,20 @@ def cmd_judge(a):
         s = st_step(st, a.step)
         if s["status"] != "judge":
             raise LoopError(f"{a.step} は判断待ちではありません（いま {LABEL[s['status']]}）")
+        sd = step_def(p, a.step)
+        # 回答が無い・選択肢の外（yes/noの問いにpassなど）は、人へ回す前に判断役へ1回だけ選び直させる。
+        # そのまま人へ回すと推奨が失敗側に化け、`answer --recommended`が中身を見ずに差し戻しになる（mtg-practiceで3件）
+        bad = [f"{q['id']}（答え{json.dumps((got.get(q['id']) or {}).get('answer'), ensure_ascii=False)}・選択肢 {' / '.join(q['answers'])}）"
+               for q in sd["judge_questions"] if (got.get(q["id"]) or {}).get("answer") not in q["answers"]]
+        if bad and s.get("judge_retry") != s.get("rework", 0):
+            s["judge_retry"] = s.get("rework", 0)
+            note(s, "判断役へ選び直しを求めた: " + ", ".join(bad))
+            save_json(STATE, st)
+            raise LoopError("判断役の回答に、無いか選択肢の外のものがあります: " + ", ".join(bad)
+                            + "。判断役へこの文を渡して1回だけ答え直させ、もう一度 `judge` へ渡す（2回目も外なら人へ回します）")
         results, rows = [], []
         all_rules = load_rules()
         new_rules = []
-        sd = step_def(p, a.step)
         item, tkey = sd.get("item"), sd.get("template", a.step)
         for q in sd["judge_questions"]:
             ans = got.get(q["id"])
@@ -826,7 +861,11 @@ def pending_list(st: dict, p: dict) -> list[dict]:
             qtext = {q["id"]: q.get("question", q["id"]) for q in sd.get("judge_questions", [])}
             qs = [r for r in rows if r.get("run") == st["run_id"] and r.get("step") == sid and r.get("kind") != "ask"
                   and r.get("human_answer") is None and r.get("rework", rw) == rw]
-            rec = "pass" if qs and all(r.get("answer") == r.get("pass_answer") for r in qs) else "fail"
+            opts = {q["id"]: q["answers"] for q in sd.get("judge_questions", [])}
+            if not qs or any(r.get("answer") not in opts.get(r["question"], []) for r in qs):
+                rec = None  # 判断役が答えていない問いがある。推奨を失敗側に倒すと、推奨どおりの答えが中身を見ない差し戻しになる
+            else:
+                rec = "pass" if all(r.get("answer") == r.get("pass_answer") for r in qs) else "fail"
             out.append({"step": sid, "kind": "judge", "options": ["pass", "fail"], "recommend": rec,
                         "questions": [{"id": r["question"], "question": qtext.get(r["question"], r["question"]),
                                        "judge_answer": r.get("answer"), "confidence": r.get("confidence"),
@@ -846,6 +885,8 @@ def cmd_pending(a):
     if not items:
         print("人待ちはありません")
         return
+    if st.get("finished"):
+        print(f"※ 閉じた実行 {st['run_id']} の残りです（いま進んでいる実行の人待ちではない）。答えずに次の `begin` で消えます\n")
     for i, x in enumerate(items, 1):
         if x["kind"] == "ask":
             j = x.get("judge") or {}
@@ -853,7 +894,7 @@ def cmd_pending(a):
             print(f"    選択肢: {' / '.join(x['options'])}  推奨: {x.get('recommend') or '（なし）'}"
                   + (f"  判断役: {j.get('answer')}（確信度{j.get('confidence', 0):.2f}）{j.get('reason', '')}" if j.get("answer") else ""))
         elif x["kind"] == "judge":
-            print(f"[{i}] {x['step']}（判断役が人へ回した）推奨: {x['recommend']}")
+            print(f"[{i}] {x['step']}（判断役が人へ回した）推奨: {x['recommend'] or '（なし。判断役が選択肢から答えていない問いがある）'}")
             for q in x["questions"]:
                 print(f"    問い{q['id']}: {q['question']}  判断役: {q['judge_answer']}（確信度{q['confidence'] or 0:.2f}）{q['judge_reason']}")
         else:
@@ -949,6 +990,7 @@ def cmd_calibrate(a):
     cfg = p.get("judge", {})
     target = a.target or cfg.get("target_accuracy", 0.95)
     min_n = a.min_samples or cfg.get("min_samples", 20)
+    agree = cfg.get("agree_streak", 10)  # 人の答えがこの件数続けて判断役と同じなら、問いの見直しを促す
     rows = [json.loads(l) for l in JUDGMENTS.read_text(encoding="utf-8").splitlines() if l.strip()] if JUDGMENTS.exists() else []
     labeled = [r for r in rows if r.get("human_answer") and r.get("answer") is not None]
     by_q: dict[str, list] = {}
@@ -969,6 +1011,15 @@ def cmd_calibrate(a):
         acc = sum(correct(r) for r in rs) / len(rs)
         out[qid] = best if best is not None else 1.01
         report.append(f"{qid}: 標本{len(rs)}件 正答率{acc:.0%} → 閾値 " + (f"{best:.2f}" if best is not None else "なし（人へ回す）"))
+        streak = 0
+        for r in sorted(rs, key=lambda r: -r.get("t", 0)):
+            if not correct(r):
+                break
+            streak += 1
+        if streak >= agree:
+            report.append(f"    → 直近{streak}件続けて人の答えが判断役と同じ。人の確認が効いていない見込み。"
+                          "レビュー役と観点が重なっていないかを見て、問いを外すか、任せる段階へ進める（`calibrate --apply`。"
+                          "標本が下限に届かず閾値が出ないなら、`--min-samples`を下げるかは人が決める）")
     wrong = [r for r in labeled if not correct(r)][-a.lessons:]
     print("\n".join(report) or "正解の付いた判断がまだありません（`decide` / `override` で付きます）")
     if a.apply:
@@ -1323,7 +1374,8 @@ def cmd_retro(a):
     if a.json:
         print(json.dumps(d, ensure_ascii=False, indent=2))
         return
-    out = [f"### {time.strftime('%Y-%m-%d', time.localtime(now()))} 振り返り（実行{d['run']}{'・閉じた' if d['finished'] else '・進行中'}）",
+    phase = "閉じた" if d["finished"] else "全工程完了" if d["steps_done"] == d["steps_total"] else "進行中"
+    out = [f"### {time.strftime('%Y-%m-%d', time.localtime(now()))} 振り返り（実行{d['run']}・{phase}）",
            f"- 経過 {d['elapsed']}s、工程 {d['steps_done']}/{d['steps_total']} 完了" + (f"。完了条件: {d['goal']}" if d["goal"] else "")]
     if d["items"]:
         done = [x for x in d["items"] if x["done"]]
@@ -1376,6 +1428,7 @@ def main(argv=None):
             x.add_argument("--summary", default="")
     r = sub.add_parser("review"); r.add_argument("step"); r.add_argument("verdict", choices=["pass", "fail"]); r.add_argument("--note", default="")
     g = sub.add_parser("gate"); g.add_argument("step")
+    g.add_argument("--dry-run", action="store_true", help="状態を動かさず、同じ環境でゲートだけ走らせる（工程役が提出前に試す）")
     j = sub.add_parser("judge"); j.add_argument("step"); j.add_argument("--answers", required=True, help="JSON文字列、または@ファイル")
     d = sub.add_parser("decide", help="人の判断待ちを裁く"); d.add_argument("step"); d.add_argument("verdict", choices=["pass", "fail"])
     d.add_argument("--note", default=""); d.add_argument("--fail-questions", nargs="*", help="failの時、誤っていた問いのid（省略時は全部）")

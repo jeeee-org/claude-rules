@@ -22,11 +22,18 @@ need_file() { check_key "need_file $1"; if [ -s "$1" ]; then ok "$1 がある"; 
 need_match()   { check_key "need_match $1 $2"; if grep -Eq -- "$2" "$1" 2>/dev/null; then ok "$1 に /$2/ がある"; else ng "$1 に /$2/ が無い"; fi; }
 forbid_match() { check_key "forbid_match $1 $2"; if grep -Eqn -- "$2" "$1" 2>/dev/null; then ng "$1 に禁止パターン /$2/ がある: $(grep -En -- "$2" "$1" | head -3 | tr '\n' ' ')"; else ok "$1 に /$2/ は無い"; fi; }
 
-# 元ファイルに出るid（例 REQ-01）が、先ファイルにすべて出る
+# idが語として出るか（英数字と_に挟まれていない）。部分一致だと短いid（opt）が別の語（options）に当たって
+# 「ある」と判定する（mtg-practiceでテスト前の項目がテスト済と判定された）。-w はロケールで日本語も語の文字に数えるので使わない
+has_id() { # has_id <id> <ファイル>
+  local esc; esc=$(printf '%s' "$1" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
+  grep -Eq -- "(^|[^A-Za-z0-9_])${esc}([^A-Za-z0-9_]|\$)" "$2" 2>/dev/null
+}
+
+# 元ファイルに出るid（例 REQ-01）が、先ファイルにすべて出る（語の境界で照合する）
 need_all_ids() {
   local src="$1" dst="$2" re="$3" missing
   check_key "need_all_ids $src $dst"
-  missing=$(grep -Eo -- "$re" "$src" 2>/dev/null | sort -u | while read -r id; do grep -Fq -- "$id" "$dst" 2>/dev/null || echo "$id"; done | tr '\n' ' ')
+  missing=$(grep -Eo -- "$re" "$src" 2>/dev/null | sort -u | while read -r id; do has_id "$id" "$dst" || echo "$id"; done | tr '\n' ' ')
   if [ -z "$missing" ]; then ok "$src のidが $dst にすべてある"; else ng "$dst に無いid: $missing"; fi
 }
 
@@ -47,7 +54,8 @@ except OSError as e:
 if not rows:
     print(f"NG {dst} に表が無い（| で始まる行が無い）"); sys.exit()
 for i in ids:
-    hit = [r for r in rows if i in r]
+    word = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(i) + r"(?![A-Za-z0-9_])")
+    hit = [r for r in rows if word.search(r)]
     if not hit:
         print(f"NG {i} の行が表に無い"); continue
     for r in hit:

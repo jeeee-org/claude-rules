@@ -16,6 +16,7 @@
 | `.claude/loop/bin/loopctl.py` | 状態を動かす唯一の道具（遷移・順序・ゲート実行・判断の記録と較正） |
 | `.claude/loop/bin/stop-guard.py` | Stopフック。未完了があるのに文章だけで止まったら、残りを名指しして続けさせる（上限あり） |
 | `.claude/loop/bin/subagent-report-guard.py` | SubagentStopフック。工程役が決まった形の報告なしに終わるのを1回差し戻す |
+| `.claude/loop/bin/shared-tree-guard.py` | PreToolUseフック（Bash）。実行中、工程役・レビュー役が共有の作業ツリーで`git checkout`・`stash`・`reset`・`restore`・`clean`・`switch`するのを止める（未コミットの変更が工程の成果物なので。`git worktree add`した外の場所では通す） |
 | `.claude/loop/judge/judgments.jsonl` | 判断役の全判定と人の正解（**git管理する**。学習の材料） |
 | `.claude/loop/judge/calibration.json`・`lessons.md` | 較正で決まった閾値と、判断役に見せる誤りの例 |
 | `.claude/loop/judge/rules.json` | 判断役から出たルールの候補と採否（影で検証中・採用中・廃止） |
@@ -33,6 +34,7 @@
 3. `.claude/loop/pipeline.json`の工程を、このリポの作業に合わせる（汎用版は`instructions`・`outputs`・`review_focus`を書き換える）
 4. ゲートを空打ちして、形が通るかを見る: `LOOP_STEP=<工程> LOOP_DIR=.claude/loop REPO_ROOT=. bash .claude/loop/gates/<工程>.sh`
    - リンタがあるリポでは、ひな型のPython（`.claude/`）をリンタの対象から外す（ひな型はリポのリンタ設定に合わせて書いていない。例: ruffなら`extend-exclude = [".claude"]`）。導入の道具が設定を見つけたら知らせる
+   - 工程役が提出前に同じ条件でゲートを試すには`loopctl.py gate <工程> --dry-run`（状態も記録も変えない）。人がゲートを直している時もこれで確かめられる
    - コミットまでをループで回すなら、汎用版の`commit`工程（`gates/commit.sh`）を使い、pushまでを1作業とするPJは`commands.env`の`PUSH_REQUIRED=1`
 5. 判断役（`.claude/agents/gate-judge.md`）の`model`を選ぶ。既定のhaikuは形や網羅の問い向き。問いが文書の読み込み（過去の裁定・仕様との突き合わせ）を要するなら、sonnetへ上げる
 6. `.claude/settings.json`がgitの無視対象なら（導入の道具が知らせる）、フックはこのworktreeにしか無い。**ループはこのworktreeから起動し、終わってもworktreeを消さない**
@@ -50,6 +52,8 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 
 統括役への最初の一言は「GOAL.mdのとおりにループを回して」でよい。`/goal`（別モデルが毎番、完了条件を確かめる）と併用してもよい: `/goal .claude/loop/bin/loopctl.py status で全工程が完了と出る`。
 
+**統括役が落ちたら**（端末ごと閉じた・セッションが切れた）: 状態はファイル（`state.json`）にあるので、同じ場所で`claude --agent loop-conductor`を起動し直せば、`loopctl.py status`から続きに入る。走っていたサブエージェントの工程は「作業中」のまま残るので、統括役がその工程役を振り直す（やり直し）。**作業ツリーの未コミットの変更はその工程の途中の成果物なので、消さない**（`git checkout`・`stash`で片付けない）。
+
 途中で様子を見る:
 
 - `python3 .claude/loop/bin/loopctl.py status` — 工程ごとの状態・差し戻し回数・分担・止まっている理由
@@ -65,7 +69,7 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 - 実行全体の上限で止まった: 時間なら`loopctl.py resume --extend <秒>`（予算を延ばして再開。延ばさずに`resume`するとすぐまた止まる）。ほかの上限は`pipeline.json`の`limits`を見直し、`accept-self`してから`resume`
 - 自動で通った判断が誤っていた: `loopctl.py override <判断id> <正しい答え> --note "<理由>"`（判断idは`judge/judgments.jsonl`）
 - 人が付き添って対話で回す時: `loopctl.py pause`（Stopフックの催促が止まる。工程役の報告の形は引き続き確かめる）
-- 実行を閉じる: `loopctl.py finish`（以後は工程役の報告の形も確かめない）
+- 実行を閉じる: `loopctl.py finish`（以後は工程役の報告の形も確かめない）。閉じた実行に残った人待ちは`status`・`pending`に「閉じた実行の残り」と出て、次の`begin`で消える
 
 ## 判断役を育てる（較正）
 
@@ -73,9 +77,13 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 
 | 段階 | 起きること | 人がすること |
 |---|---|---|
-| 育てる（最初） | 判断役の答えはすべて人へ回る（確信度つきで`pending`に並ぶ）。人の答えと理由が正解として溜まる | `answer`で答え、**理由を`--note`で書く**（`lessons.md`の「人の裁定」になり、判断役が次から読む） |
+| 育てる（最初） | 判断役の答えはすべて人へ回る（確信度つきで`pending`に並ぶ）。人の答えと理由が正解として溜まる | `answer`で答え、**理由を`--note`で書く**（`lessons.md`の「人の裁定」になり、判断役が次から読む）。人の答えがいつも推奨どおりなら、問いの置き方を見直す（下） |
 | 任せる | 較正で閾値が出た問いだけ、閾値に届いた答えを自動で採る。`audit_rate`の分は抜き取りで人へ | `calibrate`で問いごとの一致率を見て、任せてよければ`calibrate --apply`（**任せる範囲を広げるのは人**） |
 | 決定論へ上げる | 判断役の不合格の理由が決まった形なら、ルールの候補として影で走る | 条件を満たしたルールを`promote`（下の節。**上げるのも人**） |
+
+**育てる段階に置く問いは、人の答えが割れうるもの（仕様の解釈・簡略化してよいか）だけにする。** レビュー役がすでに見ている観点を判断役にも重ねると、人の答えは推奨の追認になり、全部同じ答えなので学習の材料にもならない（mtg-practiceの実測: 最初の5項目で15件すべて人へ回り、人の答えは15件すべて推奨どおり。利用者は6項目目から判断役の問いを外し、レビュー役・決定論ゲート・最後の結合テストに任せた）。`calibrate`は、人の答えが直近`judge.agree_streak`（既定10）件続けて判断役と同じ問いに「問いを外すか任せる段階へ」の目安を出す。
+
+判断役が選択肢の外の答え（`yes/no`の問いに`pass`など）や無回答を返したら、loopctlは人へ回す前に1回だけ判断役へ選び直させる（`judge`が理由を出して断るので、統括役がそれを判断役へ渡す）。2回目も外なら人へ回し、その工程には推奨を出さない（推奨を失敗側に倒すと、`answer --recommended`が中身を見ない差し戻しになる）。
 
 工程役が人に聞く問い（`block --ask`）も同じ仕組みに乗る。統括役は止める前に判断役へ問いを渡し、その答えと確信度を`block`に添える。人の答えが溜まって問いの型（`--qid`、既定は`ask:<工程の型>`）ごとに閾値が出れば、以後は閾値に届いた判断役の答えで止めずに進む（抜き取りは同じく`audit_rate`）。
 
@@ -166,9 +174,10 @@ claude-rulesの`tools/loop-scaffold.py <リポ> --profile generic --name <名前
 | `limits.max_total_rework` | 10 | **実行全体**の差し戻しの合計の上限（`max_rework`は1工程あたり） |
 | `limits.max_shards` | 30 | 実行全体で着手した分担の数の上限 |
 | `limits.max_items` | 100 | 項目ごとに回す時の項目の数の上限（`begin`と`add-item`で確かめる） |
-
-どの上限も、`begin --limit <名前>=<値>`でその実行の間だけ差し替えられる（`pipeline.json`は書き換えない。`status`に差し替えた値が出る）。
 | `sunset_min_runs` | 10 | 一度も落ちない検査を外す候補に挙げるまでの実行回数 |
 | `judge.max_promoted_per_step` | 3 | 工程あたりの採用中のルールの上限 |
 | `judge.default_threshold` | null | 較正前に使う閾値。null＝較正で閾値が出た問いだけ任せ、それまでは全部人へ（育てる段階から始める）。最初から任せたいリポだけ数値（例0.9）を書く |
+| `judge.agree_streak` | 10 | 人の答えがこの件数続けて判断役と同じ問いに、`calibrate`が「問いを外すか任せる段階へ」の目安を出す |
 | `judge.promote_min_fires` | 5 | ルールの候補を昇格させるのに要る、正しい検出の回数（誤検出は0回が条件） |
+
+どの上限も、`begin --limit <名前>=<値>`でその実行の間だけ差し替えられる（`pipeline.json`は書き換えない。`status`に差し替えた値が出る）。
