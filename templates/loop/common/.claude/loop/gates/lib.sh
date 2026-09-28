@@ -15,8 +15,18 @@ _k()   { [ -n "$GATE_KEY" ] && printf '  〔%s〕' "$GATE_KEY"; }
 ok()   { echo "  ✔ $*$(_k)"; }
 ng()   { echo "  ✖ $*$(_k)"; GATE_FAILED=1; }
 
-# ファイルがあり、空でない
-need_file() { check_key "need_file $1"; if [ -s "$1" ]; then ok "$1 がある"; else ng "$1 が無いか空"; fi; }
+# ファイルがあり、空でなく、この実行の開始後に書かれている。前の実行の成果物が残ったまま始まると、
+# 「ある」だけでは書き直し忘れても通る（業務のテストPJで起きかけた）。開始時刻は loopctl が
+# LOOP_STARTED_AT で渡す（無ければ更新時刻は見ない）
+need_file() {
+  check_key "need_file $1"
+  if [ -s "$1" ]; then ok "$1 がある"; else ng "$1 が無いか空"; return; fi
+  [ -n "${LOOP_STARTED_AT:-}" ] || return 0
+  check_key "need_fresh $1"
+  local m; m=$(python3 -c 'import os,sys; print(int(os.path.getmtime(sys.argv[1])))' "$1" 2>/dev/null)
+  if [ -n "$m" ] && [ "$m" -ge "$LOOP_STARTED_AT" ]; then ok "$1 はこの実行で書かれた"
+  else ng "$1 はこの実行の開始より前のまま（前の実行の残り。全文を書き直す）"; fi
+}
 
 # ファイルに正規表現が1つ以上ある / 1つも無い
 need_match()   { check_key "need_match $1 $2"; if grep -Eq -- "$2" "$1" 2>/dev/null; then ok "$1 に /$2/ がある"; else ng "$1 に /$2/ が無い"; fi; }

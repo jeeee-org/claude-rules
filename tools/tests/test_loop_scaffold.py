@@ -243,6 +243,33 @@ class LoopRunTest(unittest.TestCase):
         self.assertIn('requirements.md が無いか空', p.stdout)
         self.assertEqual(self.state()['steps']['requirements']['status'], 'in_progress')
 
+    def test_前の実行の成果物が残ったままならゲートで落とし書き直せば通す(self):
+        self.write_requirements()
+        f = self.root / 'docs/loop/requirements.md'
+        os.utime(f, (500, 500))  # 実行の開始（LOOP_NOW=1000）より前に書かれた
+        p = self.ctl('begin')
+        self.assertIn('前の実行の成果物が残っています', p.stderr)
+        self.ctl('start', 'requirements')
+        self.ctl('submit', 'requirements')
+        self.ctl('review', 'requirements', 'pass')
+        p = self.ctl('gate', 'requirements', ok=False)
+        self.assertIn('開始より前のまま', p.stdout)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'in_progress')
+        self.write_requirements()  # 書き直す（更新時刻が今になる）
+        self.ctl('submit', 'requirements')
+        self.ctl('review', 'requirements', 'pass')
+        p = self.ctl('gate', 'requirements')
+        self.assertIn('この実行で書かれた', p.stdout)
+
+    def test_成果物が無ければ始める時に知らせない(self):
+        self.assertNotIn('前の実行の成果物', self.ctl('begin').stderr)
+
+    def test_工程役にはコミットの状態を成果物に書かせない(self):
+        for f in ('generic/.claude/agents/step-worker.md', 'dev/.claude/agents/dev-requirements.md',
+                  'dev/.claude/agents/dev-design.md', 'dev/.claude/agents/dev-implement.md',
+                  'dev/.claude/agents/dev-test.md'):
+            self.assertIn('成果物にコミットの状態を書かない', (TOOL.parents[1] / 'templates/loop' / f).read_text())
+
     def test_コマンド未設定のゲートは通さない(self):
         env = dict(self.env, LOOP_STEP='implement', REPO_ROOT=str(self.root))
         p = subprocess.run(['bash', str(self.loop / 'gates/implement.sh')], capture_output=True, text=True, env=env)

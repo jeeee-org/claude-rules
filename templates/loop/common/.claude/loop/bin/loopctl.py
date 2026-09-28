@@ -436,6 +436,14 @@ def cmd_begin(a):
             st["items"] = items
         save_json(STATE, st)
     print(render(st, p))
+    # 前の実行の成果物が残っていると、書き直し忘れても「ある」だけで通りうる。ゲートの need_file は
+    # この実行で書かれたか（更新時刻）も見るが、工程役へ渡す前に気づけるよう先に知らせる
+    left = sorted({o for sd in p["steps"] if sd["id"] in st["steps"] for o in sd.get("outputs", [])
+                   if (REPO / o).is_file()})
+    if left:
+        print("※ 前の実行の成果物が残っています: " + ", ".join(left[:10]) + (" ほか" if len(left) > 10 else "")
+              + "。工程役には全文を書き直させる（ゲートの need_file は、この実行の開始より前の更新なら落とす）",
+              file=sys.stderr)
     blocked = sorted({o for sd in p["steps"] for o in sd.get("outputs", []) if SUBAGENT_BLOCKED_MD.match(Path(o).name)})
     if blocked:
         print("※ 成果物の名前が report・summary・findings・analysis で始まる .md です: " + ", ".join(blocked)
@@ -596,6 +604,7 @@ def run_gate(p: dict, sid: str) -> tuple[bool, str]:
     st = load_json(STATE, {}) or {}
     env = dict(os.environ, LOOP_STEP=sid, LOOP_DIR=str(LOOP_DIR), REPO_ROOT=str(LOOP_DIR.parent.parent),
                LOOP_BASE_COMMIT=st.get("base_commit") or "", LOOP_ITEM=sd.get("item", ""),
+               LOOP_STARTED_AT=str(int(st["started_at"])) if st.get("started_at") else "",
                LOOP_TEMPLATE=sd.get("template", sid), LOOP_OUTPUTS="\n".join(sd.get("outputs", [])))
     try:
         r = subprocess.run(["bash", str(path)], cwd=LOOP_DIR.parent.parent, env=env,
