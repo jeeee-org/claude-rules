@@ -93,6 +93,31 @@ class AttributionGuardTest(unittest.TestCase):
         self.commit('app.py', f'作業\n\n{ATTRIBUTION}')
         self.assertEqual(run_hook('git push', self.repo).returncode, 2)
 
+    # --- 同じ呼び出しでcommitとpush（commitがまだ無い時点で判定する。IMPROVEMENTS 2026-09-28） ---
+
+    def test_同じ呼び出しのcommitとpushでメッセージに帰属行があれば止まる(self):
+        (self.repo / 'app.py').write_text('x\n', encoding='utf-8')
+        cmd = f'git add -A && git commit -m "作業\n\n{ATTRIBUTION}" && git push'
+        r = run_hook(cmd, self.repo)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn('同じ呼び出し', r.stderr)
+
+    def test_同じ呼び出しでヒアドキュメントのメッセージも見る(self):
+        cmd = ("git commit -m \"$(cat <<'EOF'\n作業\n\n" + ATTRIBUTION + "\nEOF\n)\" && git push")
+        self.assertEqual(run_hook(cmd, self.repo).returncode, 2)
+
+    def test_同じ呼び出しでも帰属行が無ければ通す(self):
+        cmd = 'git add -A && git commit -m "作業" && git push'
+        self.assertEqual(run_hook(cmd, self.repo).returncode, 0)
+
+    def test_pushの無いcommitは見ない(self):
+        cmd = f'git commit -m "作業\n\n{ATTRIBUTION}"'
+        self.assertEqual(run_hook(cmd, self.repo).returncode, 0)
+
+    def test_同じ呼び出しでも通す指定なら通す(self):
+        cmd = f'git commit -m "作業\n\n{ATTRIBUTION}" && CR_SKIP_ATTRIBUTION_GUARD=1 git push'
+        self.assertEqual(run_hook(cmd, self.repo).returncode, 0)
+
     # --- 通す ---
 
     def test_署名の形でなければ通る(self):

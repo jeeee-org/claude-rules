@@ -25,6 +25,9 @@
 - 共通ルールはマーカー（claude-rules:embed:begin / end）で囲む。2回目以降はマーカー間だけを差し替え、
   外に書かれたPJ固有の指示には触らない。マーカー行に版（正本のcommit）と種類と選んだ運用を刻む
 - 上限の判定に使う check-limits.sh を <PJ>/.claude-rules/ へ置く（本文がこの場所を指す）
+- gitのcommit-msgフック（hooks/git-commit-msg.sh。AI帰属行を取り除く）を <PJ>の.git/hooks/commit-msg へ置く。
+  前からあったcommit-msgは commit-msg.local へ退避して続けて呼ぶ。core.hooksPathを使うリポには置かない（知らせる）。
+  .git/hooks はcloneに付いてこないので、PCごとに書き込み直す（版が最新でも、フックが無ければ置く）
 - --absorb-claude-md（both のみ）: CLAUDE.md のPJ固有の指示を AGENTS.md のブロックの下へ移し、CLAUDE.md を消す。
   グローバル時代の決まった言い回し（「グローバル`~/.claude/CLAUDE.md`に従う」「グローバル§5」等）は
   共通ルールを指す語へ置き換え、機械で判断できない残り（CLAUDE.md・グローバルという語）を行番号付きで出す
@@ -54,6 +57,8 @@ IMPORT_LINES = (f'<!-- {IMPORT_MARK} (claude-rules/tools/embed-rules.pyが書き
                 '共通ルールとPJ固有の指示はAGENTS.mdにある) -->\n@AGENTS.md\n')
 UPSTREAM = 'https://github.com/jeeee-org/claude-rules'
 TOOL_DIR = '.claude-rules'
+GIT_HOOK_SRC = ROOT / 'hooks' / 'git-commit-msg.sh'
+GIT_HOOK_MARK = 'claude-rules:commit-msg'
 
 _BLOCK_RE = re.compile(rf'^<!-- {re.escape(BEGIN)}.*?^<!-- {re.escape(END)} -->\n?', re.M | re.S)
 _IMPORT_RE = re.compile(rf'^<!-- {re.escape(IMPORT_MARK)}.*?-->\n@AGENTS\.md\n?', re.M)
@@ -200,8 +205,59 @@ def scan(root: Path) -> str:
             chosen = ','.join(o for o in build_rules.OPTIONS if o in prev[1]) or 'なし'
             state = f'{"最新" if fresh else "古い"}（{prev[0]} / 選択 {chosen}）' + \
                     ('・CLAUDE.mdあり' if cm and prev[0] == 'both' else '')
+            hook = git_hook_state(pj)[0]
+            if hook in ('なし', '古い'):
+                state += f'・commit-msgフック{hook}'
         rows.append(f'  {pj.name:<32} {state}')
     return '\n'.join(rows) + '\n'
+
+
+def git_hooks_dir(pj: Path) -> tuple[Path | None, str]:
+    """commit-msgを置く先（.git/hooks）と、置けない時の理由。gitの外なら (None, '')。"""
+    def git(*a):
+        return subprocess.run(['git', '-C', str(pj), *a], capture_output=True, text=True)
+    r = git('rev-parse', '--git-common-dir')
+    if r.returncode != 0 or not r.stdout.strip():
+        return None, ''
+    hp = git('config', 'core.hooksPath').stdout.strip()
+    if hp:
+        return None, (f'core.hooksPath（{hp}）を使うリポなので、AI帰属行を取り除くcommit-msgフックを置きませんでした。'
+                      f'そちらのcommit-msgから claude-rules の hooks/git-commit-msg.sh を呼んでください')
+    common = Path(r.stdout.strip())
+    return (common if common.is_absolute() else pj / common).resolve() / 'hooks', ''
+
+
+def git_hook_state(pj: Path) -> tuple[str, Path | None, str]:
+    """('最新' | '古い' | 'なし' | '', フックのパス, 置けない理由)。gitの外や置けないリポは ''。"""
+    d, why = git_hooks_dir(pj)
+    if d is None:
+        return '', None, why
+    f = d / 'commit-msg'
+    if not f.exists() or GIT_HOOK_MARK not in f.read_text(encoding='utf-8', errors='replace'):
+        return 'なし', f, ''
+    return ('最新' if f.read_bytes() == GIT_HOOK_SRC.read_bytes() else '古い'), f, ''
+
+
+def put_git_hook(f: Path) -> str:
+    """commit-msgを置く。前からあった他のフックは .local へ退避する。出す一言を返す。"""
+    f.parent.mkdir(parents=True, exist_ok=True)
+    note = ''
+    if f.exists() and GIT_HOOK_MARK not in f.read_text(encoding='utf-8', errors='replace'):
+        local = f.with_name('commit-msg.local')
+        if local.exists():
+            return f'※ {f}（他のフック）と {local} が両方あるので、commit-msgフックを置きませんでした。手で繋いでください'
+        f.rename(local)
+        note = '。前からあったものは commit-msg.local へ退避して続けて呼ぶ'
+    shutil.copy2(GIT_HOOK_SRC, f)
+    f.chmod(0o755)
+    return note
+
+
+def drop_git_hook(f: Path) -> None:
+    f.unlink()
+    local = f.with_name('commit-msg.local')
+    if local.exists():
+        local.rename(f)
 
 
 def plan_remove(pj: Path) -> dict[Path, str | None]:
@@ -297,6 +353,9 @@ def main(argv=None) -> int:
         if cur != new:
             diff.append((f, new))
     tool_stale = (not args.remove) and (not tool_dst.exists() or tool_dst.read_bytes() != tool_src.read_bytes())
+    hook_state, hook_file, hook_why = git_hook_state(pj)
+    hook_stale = (not args.remove) and hook_state in ('なし', '古い')
+    hook_gone = args.remove and hook_state in ('最新', '古い')
 
     if args.check:
         # 版の刻みだけが違う場合（正本に変化が無い）は最新とみなす
@@ -309,7 +368,9 @@ def main(argv=None) -> int:
             print(f'✗ {f.relative_to(pj)} の共通ルールが最新ではありません', file=sys.stderr)
         if tool_stale:
             print(f'✗ {TOOL_DIR}/check-limits.sh が最新ではありません', file=sys.stderr)
-        return 1 if stale or tool_stale else 0
+        if hook_stale:
+            print(f'✗ gitのcommit-msgフック（AI帰属行を取り除く）が{hook_state}', file=sys.stderr)
+        return 1 if stale or tool_stale or hook_stale else 0
 
     verb = '変わる' if args.dry_run else '書き換えた'
     for f, new in diff:
@@ -331,7 +392,19 @@ def main(argv=None) -> int:
             shutil.copy2(tool_src, tool_dst)
             tool_dst.chmod(0o755)
         print(f'  - {TOOL_DIR}/check-limits.sh（{verb}）')
-    if not diff and not tool_stale and not tool_gone:
+    if hook_stale:
+        note = '' if args.dry_run else put_git_hook(hook_file)
+        if note.startswith('※'):
+            print(note, file=sys.stderr)
+        else:
+            print(f'  - {hook_file}（gitのcommit-msgフック。{verb if hook_state == "古い" else ("置く" if args.dry_run else "置いた")}{note}）')
+    elif hook_gone:
+        if not args.dry_run:
+            drop_git_hook(hook_file)
+        print(f'  - {hook_file}（削除）')
+    if hook_why and not args.remove:
+        print(f'※ {hook_why}', file=sys.stderr)
+    if not diff and not tool_stale and not tool_gone and not hook_stale and not hook_gone:
         print('  変更なし')
 
     if not args.remove:

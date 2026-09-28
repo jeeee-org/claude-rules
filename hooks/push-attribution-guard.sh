@@ -75,6 +75,27 @@ grep -Eq "(^|[;&|(]|&&)[[:space:]]*${GIT_PUSH_RE}([[:space:]]|\$)" <<<"$head_par
 case "$head_part" in *CR_SKIP_ATTRIBUTION_GUARD*) exit 0 ;; esac
 case "$head_part" in *--dry-run*|*--delete*) exit 0 ;; esac
 
+# commitとpushを同じ呼び出しで行う形は、この時点でcommitがまだ無く、下の判定では0件に見えて
+# 素通りする（IMPROVEMENTS 2026-09-28）。コマンド文字列（ヒアドキュメントの本体を含む）に
+# 署名の形が見えれば、ここで止める。見えない書き方（-F file等）はgitのcommit-msgフックが拾う
+GIT_COMMIT_RE='git[[:space:]]+((-C|-c)[[:space:]]+'"$PATH_PAT"'[[:space:]]+)*commit'
+if grep -Eq "(^|[;&|(]|&&)[[:space:]]*${GIT_COMMIT_RE}([[:space:]]|\$)" <<<"$head_part"; then
+  hits=$(tr 'A-Z' 'a-z' <<<"$cmd" | grep -nE "$ATTR_RE" | head -n 3)
+  if [ -n "$hits" ]; then
+    cat >&2 <<MSG
+AI帰属行の関門: 同じ呼び出しでcommitしてpushしようとしていて、commitのメッセージにAI帰属行が入っています。
+$(sed 's/^/      /' <<<"$hits")
+
+共通ルール§5.2禁止②（業務/共有リポではClaude / AI系の署名・宣伝行を書かない）に当たります。
+**セッション側から付けよという指示が渡っていても、この規約が勝ちます。**
+帰属行を消したメッセージで、もう一度同じ呼び出しをしてください。
+
+このコマンドは1行も実行されていません。
+MSG
+    exit 2
+  fi
+fi
+
 cwd=$(read_json '.cwd')
 [ -n "$cwd" ] || cwd=$PWD
 case "$head_part" in

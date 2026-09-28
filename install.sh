@@ -18,20 +18,25 @@
 # あわせて表示の設定（settings/display.json。思考の要約・focus表示）を
 # **無いキーだけ**足します（PCごとに決めた値は上書きしない）。止めるなら:
 #   ./install.sh --no-display-settings （または CLAUDE_RULES_DISPLAY_SETTINGS=0 ./install.sh）
+# AI帰属行を出さない設定（settings/attribution.json）も**無い時だけ**足します。Claude Codeが
+# commit・PRへ帰属行を付けることも、モデルへ付けよと指示することも止まる（共通ルール§5.2 禁止②の出どころ）。
+#   ./install.sh --no-attribution-settings （または CLAUDE_RULES_ATTRIBUTION_SETTINGS=0 ./install.sh）
 set -euo pipefail
 
 INSTALL_CODEX="${CLAUDE_RULES_INSTALL_CODEX:-1}"
 REGISTER_HOOKS="${CLAUDE_RULES_REGISTER_HOOKS:-1}"
 DISPLAY_SETTINGS="${CLAUDE_RULES_DISPLAY_SETTINGS:-1}"
+ATTRIBUTION_SETTINGS="${CLAUDE_RULES_ATTRIBUTION_SETTINGS:-1}"
 KEEP_GLOBAL_RULES=0
 for arg in "$@"; do
   case "$arg" in
     --no-codex) INSTALL_CODEX=0 ;;
     --no-hook-register) REGISTER_HOOKS=0 ;;
     --no-display-settings) DISPLAY_SETTINGS=0 ;;
+    --no-attribution-settings) ATTRIBUTION_SETTINGS=0 ;;
     --keep-global-rules) KEEP_GLOBAL_RULES=1 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings / --keep-global-rules）" >&2; exit 2 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings / --no-attribution-settings / --keep-global-rules）" >&2; exit 2 ;;
   esac
 done
 case "$INSTALL_CODEX" in
@@ -45,6 +50,10 @@ esac
 case "$DISPLAY_SETTINGS" in
   0|false|no|'') DISPLAY_SETTINGS=0 ;;
   *) DISPLAY_SETTINGS=1 ;;
+esac
+case "$ATTRIBUTION_SETTINGS" in
+  0|false|no|'') ATTRIBUTION_SETTINGS=0 ;;
+  *) ATTRIBUTION_SETTINGS=1 ;;
 esac
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -264,6 +273,38 @@ apply_display_settings() {
 }
 apply_display_settings
 
+# AI帰属行を出さない設定（正本 settings/attribution.json）。PreToolUseの関門は、commitとpushを
+# 同じ呼び出しで行う形やスクリプトの中のpushをすり抜ける（IMPROVEMENTS 2026-09-28）。出どころで
+# 止めれば、帰属行も「付けよ」というモデルへの指示も出ない。**キーが無い時だけ足す**。PCで決めた
+# 値があれば上書きせず、帰属行を出す値なら知らせる（"attribution": false はv2.1.281以降だけ
+# 読めるので、どの版でも読める空文字の形で入れる）
+apply_attribution_settings() {
+  if [ "$ATTRIBUTION_SETTINGS" = 0 ]; then
+    echo "※ AI帰属行を出さない設定は省きました（--no-attribution-settings）。" >&2
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "※ jqが無いため、AI帰属行を出さない設定を足せませんでした。settings/attribution.json を手で $SETTINGS へ写してください" >&2
+    return 0
+  fi
+  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    echo "⚠ $SETTINGS がJSONとして読めません。AI帰属行を出さない設定を省きました。" >&2
+    return 0
+  fi
+  if jq -e 'has("attribution")' "$SETTINGS" >/dev/null 2>&1; then
+    jq -e '.attribution == false or ((.attribution | type) == "object"
+           and .attribution.commit == "" and .attribution.pr == "")' "$SETTINGS" >/dev/null 2>&1 ||
+      echo "⚠ $SETTINGS の attribution がAI帰属行を出す値です（上書きしていません）。共通ルール§5.2 禁止②に沿うなら settings/attribution.json の値にしてください" >&2
+    return 0
+  fi
+  cp "$SETTINGS" "$SETTINGS.bak"
+  jq --slurpfile a "$SRC_DIR/settings/attribution.json" '. + $a[0]' "$SETTINGS" > "$SETTINGS.tmp" &&
+    mv "$SETTINGS.tmp" "$SETTINGS"
+  echo "  - settings.jsonにAI帰属行を出さない設定（attribution）を足しました（控え: $SETTINGS.bak。止めるなら --no-attribution-settings）"
+}
+apply_attribution_settings
+
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/hooks"
   cp "$SRC_DIR/hooks/codex-triage.sh" "$CODEX_HOME/hooks/codex-triage"
@@ -349,6 +390,8 @@ echo "**pushの関門（正確で、止められる）**。記録の無いcommit
 echo "例外はコミットメッセージに「記録なし: <理由>」と書くと通り、理由が履歴に残ります。"
 echo "同じpushの直前に、AI帰属行の関門（§5.2 禁止②）も見ます。セッション側から付けよという"
 echo "指示が渡っていても規約が勝ちます。例外はCR_SKIP_ATTRIBUTION_GUARD=1のみです。"
+echo "commitとpushを同じ呼び出しで行う形やスクリプトの中のpushは、この関門をすり抜けます。そこは"
+echo "settings.jsonのattribution（帰属行を出さない）と、PJへ共通ルールを書き込む時に置くgitのcommit-msgフックが受け持ちます。"
 echo "効いているかは作業するリポで、**単独の呼び出しで**確かめてください:"
 echo "  $CLAUDE_CONFIG_DIR/tools/check-record-guard.sh --repo <リポ>"
 echo ""

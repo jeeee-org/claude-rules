@@ -233,6 +233,53 @@ class EmbedTest(unittest.TestCase):
         self.assertNotIn('### 5.1 worktreeルール', self.read('AGENTS.md'))
         self.assertEqual(self.read('AGENTS.md').count(BEGIN), 1)
 
+    # --- gitのcommit-msgフック（AI帰属行を取り除く。IMPROVEMENTS 2026-09-28） ---
+
+    def git_init(self):
+        subprocess.run(['git', 'init', '-q', str(self.pj)], check=True)
+        return self.pj / '.git' / 'hooks' / 'commit-msg'
+
+    def test_gitのリポにはcommit_msgフックを置く(self):
+        hook = self.git_init()
+        p = self.run_tool()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('claude-rules:commit-msg', hook.read_text(encoding='utf-8'))
+        self.assertTrue(os.access(hook, os.X_OK))
+        self.assertEqual(self.run_tool('--check').returncode, 0)
+
+    def test_gitの外にはフックを置かず黙る(self):
+        p = self.run_tool()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn('commit-msg', p.stdout + p.stderr)
+
+    def test_版が最新でもフックが無ければ置き確かめでは古いと出す(self):
+        hook = self.git_init()
+        self.run_tool()
+        hook.unlink()
+        self.assertEqual(self.run_tool('--check').returncode, 1)
+        self.assertIn('commit-msgフック', self.run_raw('--scan', str(self.pj.parent)).stdout)
+        self.run_tool()
+        self.assertTrue(hook.exists())
+
+    def test_前からあったフックは退避して取り除くと戻る(self):
+        hook = self.git_init()
+        hook.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+        p = self.run_tool()
+        self.assertIn('commit-msg.local', p.stdout)
+        self.assertEqual(hook.with_name('commit-msg.local').read_text(encoding='utf-8'), '#!/bin/sh\nexit 0\n')
+        self.run_tool('--remove')
+        self.assertEqual(hook.read_text(encoding='utf-8'), '#!/bin/sh\nexit 0\n')
+        self.assertFalse(hook.with_name('commit-msg.local').exists())
+
+    def test_hooksPathを使うリポには置かず知らせる(self):
+        hook = self.git_init()
+        subprocess.run(['git', '-C', str(self.pj), 'config', 'core.hooksPath', '.husky'], check=True)
+        p = self.run_tool()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('core.hooksPath', p.stderr)
+        self.assertFalse(hook.exists())
+        self.assertFalse((self.pj / '.husky').exists())
+
     def test_選べる運用の一覧(self):
         p = self.run_raw('--list-options')
         self.assertEqual(p.returncode, 0)
