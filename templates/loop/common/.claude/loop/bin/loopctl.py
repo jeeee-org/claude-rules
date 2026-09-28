@@ -373,7 +373,7 @@ def limit_reason(st: dict, p: dict, adding_shard: int = 0) -> str | None:
     if lim.get("max_total_rework") is not None and total > lim["max_total_rework"]:
         return f"実行全体の差し戻しが上限（{lim['max_total_rework']}回）を超えました"
     if lim.get("max_shards") is not None and st.get("shards_started", 0) + adding_shard > lim["max_shards"]:
-        return f"着手した分担の数が上限（{lim['max_shards']}）を超えました"
+        return f"工程ごとの最初の着手を除いた分担の数が上限（{lim['max_shards']}）を超えました"
     return None
 
 
@@ -537,14 +537,26 @@ def cmd_start(a):
             raise LoopError(f"{a.step} は止まっています（{s.get('blocker')}）。解けたら `unblock {a.step}`")
         if s["status"] in ("review", "gate", "judge"):
             raise LoopError(f"{a.step} は提出済みです（いま {LABEL[s['status']]}）。やり直すなら `reopen {a.step}`")
-        why = limit_reason(st, p, adding_shard=1)
+        # 分担の上限は暴走の歯止め（分担の追加・差し戻し後の着手し直し）。工程ごとの最初の着手は数えない。
+        # 累計で数えると、問いごとに工程を回す実行（10問×4工程）は1工程1分担でも必ず止まった（IMPROVEMENTS 2026-09-28）
+        extra = 1 if s.get("started") else 0
+        why = limit_reason(st, p, adding_shard=extra)
         if why:
             halt(st, why)
             save_json(STATE, st)
             raise LoopError(f"{why}。実行を止めました（`status`で確かめ、続けるなら上限を見直して `resume`）")
+        pre = run_precheck(p, a.step)
+        if pre:
+            s["status"] = "blocked"
+            s["blocker"] = f"着手前の確かめが通らない: {pre}"
+            note(s, s["blocker"])
+            save_json(STATE, st)
+            raise LoopError(f"{a.step} の着手前の確かめ（precheck）が通りません: {pre}。工程を止めました。"
+                            "前提（ログイン・接続など）を人に直してもらい、`unblock` してから着手する")
         s["status"] = "in_progress"
         s["shards"][a.shard] = "working"
-        st["shards_started"] = st.get("shards_started", 0) + 1
+        st["shards_started"] = st.get("shards_started", 0) + extra
+        s["started"] = True
         note(s, f"着手 shard={a.shard}")
         save_json(STATE, st)
     print(f"{a.step} を作業中にしました（shard={a.shard}）")
@@ -613,6 +625,28 @@ def run_gate(p: dict, sid: str) -> tuple[bool, str]:
         return False, "ゲートが時間切れになりました"
     out = (r.stdout + r.stderr).strip()
     return r.returncode == 0, out[-4000:]
+
+
+def run_precheck(p: dict, sid: str) -> str | None:
+    """工程の precheck（着手前の確かめ。SSOの残り時間・トンネル等）を回す。通れば None、通らなければ理由。
+    工程役を起こしてから前提の切れに気づくと、作業を書き終えた後で人待ちになる（IMPROVEMENTS 2026-09-28）。"""
+    sd = step_def(p, sid)
+    pc = sd.get("precheck")
+    if not pc:
+        return None
+    path = (LOOP_DIR / pc).resolve()
+    if not path.exists():
+        return f"{pc} がありません"
+    env = dict(os.environ, LOOP_STEP=sid, LOOP_DIR=str(LOOP_DIR), REPO_ROOT=str(LOOP_DIR.parent.parent),
+               LOOP_ITEM=sd.get("item", ""), LOOP_TEMPLATE=sd.get("template", sid))
+    try:
+        r = subprocess.run(["bash", str(path)], cwd=LOOP_DIR.parent.parent, env=env,
+                           capture_output=True, text=True, timeout=sd.get("precheck_timeout", 120))
+    except subprocess.TimeoutExpired:
+        return f"{pc} が時間切れ"
+    if r.returncode == 0:
+        return None
+    return gate_reason((r.stdout + r.stderr).strip()) or f"{pc} が exit {r.returncode}"
 
 
 def gate_reason(out: str) -> str:

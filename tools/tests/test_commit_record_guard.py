@@ -390,6 +390,15 @@ class AuditTest(unittest.TestCase):
         self.commit('app.py')
         self.assertEqual(self.run_audit('ls -la').returncode, 0)
 
+    def test_取り込みのマージは見ない(self):
+        git(self.repo, 'checkout', '-q', '-b', 'upstream')
+        self.commit('other.py')
+        git(self.repo, 'checkout', '-q', 'main')
+        self.commit('checkpoints/2026-01-02-対応-記録.md', '# ログ\n')
+        git(self.repo, 'merge', '-q', '--no-ff', '-m', "Merge branch 'upstream'", 'upstream')
+        r = self.run_audit('git pull --no-rebase && git commit --no-edit')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_古いcommitは蒸し返さない(self):
         self.commit('app.py')
         env_cmd = ['bash', '-c',

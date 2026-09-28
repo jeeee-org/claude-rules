@@ -27,7 +27,7 @@
 
 ## 導入したら最初にやること
 
-0. **上限で止まることを先に確かめる**（打ち切りの経路は、普段の実行では発火しない）: `loopctl.py begin --limit max_shards=1`（項目ごとに回すなら`--allow-empty`も）で始め、同じ工程へ2回`start`して止まることを見て、`loopctl.py finish`で閉じる。上限の差し替えはこの実行の間だけで、`pipeline.json`は書き換えない。閉じた実行に「作業中」の工程が残るが、次の`begin`で消える
+0. **上限で止まることを先に確かめる**（打ち切りの経路は、普段の実行では発火しない）: `loopctl.py begin --limit max_shards=0`（項目ごとに回すなら`--allow-empty`も）で始め、同じ工程へ2回`start`して止まることを見て、`loopctl.py finish`で閉じる。上限の差し替えはこの実行の間だけで、`pipeline.json`は書き換えない。閉じた実行に「作業中」の工程が残るが、次の`begin`で消える
 
 1. `.claude/loop/GOAL.md`に完了条件を書く
 2. `.claude/loop/gates/commands.env`にビルド・リント・テストのコマンドを書く（空のままのゲートは不合格になる）
@@ -148,6 +148,18 @@ python3 .claude/loop/bin/loopctl.py gate-stats   # 検査ごとの実行回数�
 - 判断役の問いのidは項目をまたいで同じなので、較正と誤りの例は項目の間で共有される。ルールの候補も、パスの項目idを`{item}`に戻して型の単位で育つ
 - 工程役とゲートは、展開後の定義を`loopctl.py show <工程>`で読む（ゲートには`LOOP_ITEM`・`LOOP_OUTPUTS`も渡る）
 
+## 着手前の確かめ（precheck）
+
+測る・外へ繋ぐ工程は、前提（クラウドのログインの残り時間・トンネル・VPN）が切れていると、工程役が作業を書き終えてから気づいて人待ちになる。工程に`"precheck": "gates/<名前>.sh"`を書くと、`loopctl.py start`が着手の前にそれを回し、**exitが0以外なら工程を止めて（人待ち）工程役を起こさせない**。理由は✖の行（無ければ最後の行）。人が前提を直して`unblock`すれば着手できる。ゲートと同じく`REPO_ROOT`・`LOOP_STEP`・`LOOP_ITEM`が渡る。既定の時間切れは120秒（`precheck_timeout`）。
+
+```bash
+# 例: gates/precheck-aws.sh — ログインの残りが工程の見込み（ここでは60分）より短ければ止める
+. "$LOOP_DIR/gates/lib.sh"
+need_cmd "AWSのログイン" "aws sts get-caller-identity --profile $AWS_PROFILE >/dev/null"
+# 残り時間を見るならSSOのキャッシュ（~/.aws/sso/cache/*.json の expiresAt）と比べる検査を足す
+gate_end
+```
+
 ## 必ず止まる場面（must_stop）
 
 統括役は、`pipeline.json`の`must_stop`に挙がった操作の直前で必ず止まる。既定は共有ブランチへのpush・PRのマージ・デプロイと本番への反映・外へのメッセージの送信・データの削除。記録のpushが既定の手順のリポなどでは、ここから外す（取り消せない操作は、この一覧にかかわらず人に確かめる）。
@@ -173,7 +185,7 @@ claude-rulesの`tools/loop-scaffold.py <リポ> --profile generic --name <名前
 | `time_budget_sec` | null | 経過時間の予算。入れると催促に`elapsed Xs / Ys`を添える（公式: 時間の目安があると早く終わる。拘束力は無い） |
 | `limits.time_budget_hard` | false | trueなら`time_budget_sec`を打ち切りにする（超えたら次の着手とStopフックで実行を止める） |
 | `limits.max_total_rework` | 10 | **実行全体**の差し戻しの合計の上限（`max_rework`は1工程あたり） |
-| `limits.max_shards` | 30 | 実行全体で着手した分担の数の上限 |
+| `limits.max_shards` | 30 | 実行全体で、**工程ごとの最初の着手を除いた**分担の数（分担の追加・差し戻し後の着手し直し）の上限。暴走の歯止めで、工程の数そのものは数えない（問いごとに40工程を回す実行が1工程1分担でも止まったため。2026-09-28） |
 | `limits.max_items` | 100 | 項目ごとに回す時の項目の数の上限（`begin`と`add-item`で確かめる） |
 | `sunset_min_runs` | 10 | 一度も落ちない検査を外す候補に挙げるまでの実行回数 |
 | `judge.max_promoted_per_step` | 3 | 工程あたりの採用中のルールの上限 |

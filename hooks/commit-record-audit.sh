@@ -86,6 +86,9 @@ while IFS= read -r d; do
   files=$(git -c core.quotepath=false -C "$root" show --name-only --pretty=format: HEAD 2>/dev/null)
   grep -Eq "$RECORD_RE" <<<"$files" && continue
   git -C "$root" log -1 --format=%B 2>/dev/null | grep -Eq "$EXEMPT_RE" && continue
+  # マージは見ない（pushの関門の --no-merges と同じ）。取り込みのマージは記録を持たないのが正しく、
+  # 記録は取り込んだ側と直前のcommitにある。見ると取り込みのたびに出る（IMPROVEMENTS 2026-09-28）
+  git -C "$root" rev-parse -q --verify 'HEAD^2' >/dev/null 2>&1 && continue
 
   subject=$(git -C "$root" log -1 --format=%s 2>/dev/null)
   cat >&2 <<MSG

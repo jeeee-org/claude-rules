@@ -829,11 +829,35 @@ class LoopRunTest(unittest.TestCase):
         self.assertIn('上限', st['halted'])
 
     def test_分担の数の上限で止まる(self):
-        self.set_pipeline(lambda c: c['limits'].__setitem__('max_shards', 1))
+        self.set_pipeline(lambda c: c['limits'].__setitem__('max_shards', 0))
         self.ctl('begin')
         self.ctl('start', 'requirements', '--shard', 'a')
         p = self.ctl('start', 'requirements', '--shard', 'b', ok=False)
         self.assertIn('分担の数が上限', p.stderr)
+
+    def test_工程ごとの最初の着手は分担の上限に数えない(self):
+        # 問いごとに工程を回す実行（工程の数が上限を超える）でも、1工程1分担なら止まらない
+        self.set_pipeline(lambda c: c['limits'].__setitem__('max_shards', 0))
+        self.ctl('begin')
+        self.ctl('start', 'requirements')
+        self.assertTrue(self.state()['active'])
+        self.assertEqual(self.state()['shards_started'], 0)
+
+    def test_着手前の確かめが通らなければ工程を止め工程役を起こさせない(self):
+        pc = self.loop / 'gates/precheck.sh'
+        pc.write_text('echo "  ✖ ログインの残りが30分（見込みは60分）"; exit 1\n')
+        self.set_pipeline(lambda c: c['steps'][0].__setitem__('precheck', 'gates/precheck.sh'))
+        self.ctl('begin')
+        p = self.ctl('start', 'requirements', ok=False)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn('ログインの残りが30分', p.stderr)
+        s = self.state()['steps']['requirements']
+        self.assertEqual(s['status'], 'blocked')
+        self.assertIn('着手前の確かめ', s['blocker'])
+        pc.write_text('exit 0\n')  # 人が前提を直した
+        self.ctl('unblock', 'requirements')
+        self.ctl('start', 'requirements')
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'in_progress')
 
     def test_時間の上限を打ち切りにするとStopフックが止める(self):
         self.set_pipeline(lambda c: (c.__setitem__('time_budget_sec', 60), c['limits'].__setitem__('time_budget_hard', True)))
@@ -1221,12 +1245,12 @@ class LimitAndRetroTest(PerItemTest):
 
     def test_上限をこの実行の間だけ差し替えpipelineは変えない(self):
         before = (self.loop / 'pipeline.json').read_bytes()
-        self.ctl('begin', '--items', 'q1', '--limit', 'max_shards=1')
+        self.ctl('begin', '--items', 'q1', '--limit', 'max_shards=0')
         self.ctl('start', 'triage')
         p = self.ctl('start', 'triage', '--shard', 'b', ok=False)
-        self.assertIn('分担の数が上限（1）', p.stderr)
+        self.assertIn('分担の数が上限（0）', p.stderr)
         self.assertEqual((self.loop / 'pipeline.json').read_bytes(), before)
-        self.assertIn('max_shards=1', self.ctl('status').stdout)
+        self.assertIn('max_shards=0', self.ctl('status').stdout)
         self.ctl('begin', '--force', '--items', 'q1')  # 次の実行には持ち越さない
         self.assertNotIn('limit_override', self.state())
         self.ctl('start', 'triage')
