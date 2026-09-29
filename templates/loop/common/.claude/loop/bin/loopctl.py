@@ -134,6 +134,7 @@ def expand(raw: dict, items: list[str]) -> dict:
                 sd["after"] = [f"{it}/{tids[i - 1]}"] if i else list(pi.get("after", []))
             if i == 0 and pi.get("serial") and prev_last:
                 sd["after"].append(prev_last)
+                sd["serial_after"] = prev_last  # 順番のためだけの前提（枝の知らせで集約と見なさない）
             steps.append(sd)
         prev_last = f"{it}/{tids[-1]}" if tids else prev_last
     p["steps"] = steps
@@ -464,9 +465,16 @@ def cmd_begin(a):
               "避けるなら pipeline.json の outputs の名前を変える", file=sys.stderr)
 
 
+def own_after(p: dict, sid: str) -> list[str]:
+    """前提のうち、per_item.serial が順番のためだけに足したもの（前の項目の最後の工程）を除いたもの。"""
+    extra = step_def(p, sid).get("serial_after")
+    return [d for d in after_of(p, sid) if d != extra]
+
+
 def loose_aggregators(p: dict, ids: set) -> list[str]:
-    """前提を2つ以上待つ工程（集約の工程）。"""
-    return [sd["id"] for sd in p["steps"] if sd["id"] in ids and len(after_of(p, sd["id"])) >= 2]
+    """前提を2つ以上待つ工程（集約の工程）。serial の直列化で足した前提は数えない（数えると2件目以降の
+    項目の最初の工程が集約に見え、その後ろの枝が知らせから外れた。IMPROVEMENTS 2026-09-29）。"""
+    return [sd["id"] for sd in p["steps"] if sd["id"] in ids and len(own_after(p, sd["id"])) >= 2]
 
 
 def loose_branches(p: dict, ids: set) -> list[str]:
@@ -481,13 +489,14 @@ def loose_branches(p: dict, ids: set) -> list[str]:
     aggs = set(loose_aggregators(p, ids))
     if not steps or not aggs:
         return []
-    needed = {d for sd in steps for d in after_of(p, sd["id"])}
+    # 次の項目が順番のために待つだけの前提も数えない（結果が集約に入るわけではない）
+    needed = {d for sd in steps for d in own_after(p, sd["id"])}
     memo: dict[str, bool] = {}
 
     def after_agg(sid: str, seen=frozenset()) -> bool:
         if sid in memo:
             return memo[sid]
-        r = sid in aggs or any(d not in seen and after_agg(d, seen | {sid}) for d in after_of(p, sid))
+        r = sid in aggs or any(d not in seen and after_agg(d, seen | {sid}) for d in own_after(p, sid))
         memo[sid] = r
         return r
 

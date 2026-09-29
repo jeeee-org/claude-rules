@@ -1208,6 +1208,18 @@ class PerItemTest(unittest.TestCase):
         err = self.ctl('begin').stderr
         self.assertIn('枝の工程があります: followup。', err)
         self.assertNotIn('cleanup', err.split('。')[0])
+
+    def test_直列の項目でも全項目の枝を知らせる(self):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['per_item']['items'] = ['q1', 'q2', 'q3']
+        cfg['per_item']['serial'] = True
+        cfg['per_item']['steps'].append({'id': 'followup', 'worker': 'step-worker', 'reviewer': None,
+                                         'gate': None, 'after': ['decide'], 'judge_questions': []})
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+        # 直列化で q2/decide・q3/decide は前提2つ（triage＋前の項目の最後）になるが、集約とは見なさない
+        err = self.ctl('begin').stderr
+        # 次の項目が順番のために待つだけの q1/followup・q2/followup も、結果は report に入らない
+        self.assertIn('枝の工程があります: q1/followup, q2/followup, q3/followup。', err)
     def state(self):
         return json.loads((self.loop / 'state.json').read_text())
 
