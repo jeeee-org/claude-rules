@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import re
 import contextlib
+import shutil
 import fcntl
 import hashlib
 import json
@@ -40,6 +41,8 @@ GATE_STATS = LOOP_DIR / "stats" / "gates.jsonl"
 SELF_FILES = ("bin/*.py", "gates/*", "pipeline.json", "../agents/*.md", "../settings.json")
 REPO = LOOP_DIR.parent.parent
 LOCK = LOOP_DIR / ".state.lock"
+# 工程役ごとの一時置き場。共有の置き場（/tmp等）だと並列の工程役が別の問いの実測を拾う（IMPROVEMENTS 2026-09-29）
+TMP_DIR = LOOP_DIR / "tmp"
 
 OPEN = ("pending", "in_progress", "review", "gate", "judge")
 LABEL = {
@@ -305,8 +308,11 @@ def render(st: dict, p: dict) -> str:
             line += "  分担: " + ", ".join(f"{k}={'提出済' if v == 'submitted' else '作業中'}" for k, v in s["shards"].items())
         if s["status"] == "blocked":
             line += f"  理由: {s.get('blocker')}"
-            if s.get("ask"):
-                line += f"（選択肢: {' / '.join(s['ask']['options'])}・推奨: {s['ask'].get('recommend') or 'なし'}）"
+            asks = open_asks(s)
+            if len(asks) == 1:
+                line += f"（選択肢: {' / '.join(asks[0]['options'])}・推奨: {asks[0].get('recommend') or 'なし'}）"
+            elif asks:
+                line += f"（人に選んでもらう問い{len(asks)}件。`pending`で一覧）"
         elif s["status"] == "pending":
             b = waiting_on_blocked(st, p, sd["id"])
             if b:
@@ -435,6 +441,7 @@ def cmd_begin(a):
         if items is not None:
             st["items"] = items
         save_json(STATE, st)
+        shutil.rmtree(TMP_DIR, ignore_errors=True)  # 前の実行の一時ファイルを、この実行の実測と取り違えない
     print(render(st, p))
     # 前の実行の成果物が残っていると、書き直し忘れても「ある」だけで通りうる。ゲートの need_file は
     # この実行で書かれたか（更新時刻）も見るが、工程役へ渡す前に気づけるよう先に知らせる
@@ -559,7 +566,14 @@ def cmd_start(a):
         s["started"] = True
         note(s, f"着手 shard={a.shard}")
         save_json(STATE, st)
-    print(f"{a.step} を作業中にしました（shard={a.shard}）")
+    tmp = work_tmp(a.step, a.shard)
+    tmp.mkdir(parents=True, exist_ok=True)
+    print(f"{a.step} を作業中にしました（shard={a.shard}）。この工程役の一時置き場: {tmp.relative_to(REPO)}"
+          "（工程役へ渡す。一時ファイルはここだけに置き、ほかの工程の置き場と共有の /tmp を使わない）")
+
+
+def work_tmp(step: str, shard: str) -> Path:
+    return TMP_DIR / step / shard
 
 
 def cmd_submit(a):
@@ -845,8 +859,8 @@ def rewrite_judgments(fn) -> int:
 def decide_core(st: dict, p: dict, step: str, verdict: str, note_: str, fail_questions=None) -> int:
     """判断役が人へ回した工程を裁く（ロックの内側で呼ぶ）。付けた正解の件数を返す。"""
     s = st_step(st, step)
-    if not s.get("needs_human") or s.get("ask"):
-        raise LoopError(f"{step} は判断役からの人の判断待ちではありません" + ("（工程役の問いは `answer`）" if s.get("ask") else ""))
+    if not s.get("needs_human") or open_asks(s):
+        raise LoopError(f"{step} は判断役からの人の判断待ちではありません" + ("（工程役の問いは `answer`）" if open_asks(s) else ""))
     q_pass = {q["id"]: q["pass"] for q in step_def(p, step)["judge_questions"]}
     rw = s.get("rework", 0)
 
@@ -893,6 +907,20 @@ def load_judgments() -> list:
     return [json.loads(l) for l in JUDGMENTS.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
+def open_asks(s: dict) -> list[dict]:
+    """工程に開いている、人に選んでもらう問い。1工程に複数並べられる（2つ目が1つ目を上書きしない）。
+
+    1工程に1問だった頃の状態（s["ask"]）も読んで移す。"""
+    if "ask" in s:
+        s["open_asks"] = [dict(s.pop("ask"), n=1)] + s.get("open_asks", [])
+    return s.get("open_asks", [])
+
+
+def ask_key(sid: str, k: dict, asks: list[dict]) -> str:
+    """答える時の名前。問いが1つなら工程idのまま、複数なら <工程>#<番号>（番号は答えても振り直さない）。"""
+    return sid if len(asks) == 1 else f"{sid}#{k.get('n', 1)}"
+
+
 def pending_list(st: dict, p: dict) -> list[dict]:
     """人が答えれば動く工程の一覧。工程役の問い・判断役が人へ回した判断・理由だけの停止の3種。"""
     rows = load_judgments()
@@ -902,10 +930,12 @@ def pending_list(st: dict, p: dict) -> list[dict]:
         s = st["steps"].get(sid)
         if not s or s["status"] != "blocked":
             continue
-        if s.get("ask"):
-            k = dict(s["ask"])
-            out.append({"step": sid, "kind": "ask", "question": k["question"], "options": k["options"],
-                        "recommend": k.get("recommend"), "judge": k.get("judge")})
+        asks = open_asks(s)
+        if asks:
+            for k in asks:
+                out.append({"step": sid, "key": ask_key(sid, k, asks), "kind": "ask", "jid": k["jid"],
+                            "question": k["question"], "context": k.get("context") or "", "options": k["options"],
+                            "recommend": k.get("recommend"), "judge": k.get("judge")})
         elif s.get("needs_human"):
             rw = s.get("rework", 0)
             qtext = {q["id"]: q.get("question", q["id"]) for q in sd.get("judge_questions", [])}
@@ -916,13 +946,13 @@ def pending_list(st: dict, p: dict) -> list[dict]:
                 rec = None  # 判断役が答えていない問いがある。推奨を失敗側に倒すと、推奨どおりの答えが中身を見ない差し戻しになる
             else:
                 rec = "pass" if all(r.get("answer") == r.get("pass_answer") for r in qs) else "fail"
-            out.append({"step": sid, "kind": "judge", "options": ["pass", "fail"], "recommend": rec,
+            out.append({"step": sid, "key": sid, "kind": "judge", "options": ["pass", "fail"], "recommend": rec,
                         "questions": [{"id": r["question"], "question": qtext.get(r["question"], r["question"]),
                                        "judge_answer": r.get("answer"), "confidence": r.get("confidence"),
                                        "judge_reason": r.get("judge_reason", ""), "why_human": r.get("decision")}
                                       for r in qs]})
         else:
-            out.append({"step": sid, "kind": "blocked", "reason": s.get("blocker") or "理由未記入"})
+            out.append({"step": sid, "key": sid, "kind": "blocked", "reason": s.get("blocker") or "理由未記入"})
     return out
 
 
@@ -940,16 +970,19 @@ def cmd_pending(a):
     for i, x in enumerate(items, 1):
         if x["kind"] == "ask":
             j = x.get("judge") or {}
-            print(f"[{i}] {x['step']}（工程役の問い）{x['question']}")
+            print(f"[{i}] {x['key']}（工程役の問い）{x['question']}")
+            if x.get("context"):
+                print(f"    背景: {x['context']}")
             print(f"    選択肢: {' / '.join(x['options'])}  推奨: {x.get('recommend') or '（なし）'}"
                   + (f"  判断役: {j.get('answer')}（確信度{j.get('confidence', 0):.2f}）{j.get('reason', '')}" if j.get("answer") else ""))
         elif x["kind"] == "judge":
-            print(f"[{i}] {x['step']}（判断役が人へ回した）推奨: {x['recommend'] or '（なし。判断役が選択肢から答えていない問いがある）'}")
+            print(f"[{i}] {x['key']}（判断役が人へ回した）推奨: {x['recommend'] or '（なし。判断役が選択肢から答えていない問いがある）'}")
+            print("    passなら: この工程を完了にして次の工程へ進む / failなら: 工程役へ差し戻してやり直させる")
             for q in x["questions"]:
                 print(f"    問い{q['id']}: {q['question']}  判断役: {q['judge_answer']}（確信度{q['confidence'] or 0:.2f}）{q['judge_reason']}")
         else:
             print(f"[{i}] {x['step']}（止まっている）理由: {x['reason']}  → 解けたら `unblock {x['step']}`")
-    print("\n答え方: `loopctl.py answer <工程>=<選択肢> ...`（判断役の分は pass|fail）。推奨どおりなら `<工程>=推奨`、"
+    print("\n答え方: `loopctl.py answer <工程>=<選択肢> ...`（1工程に問いが複数あれば `<工程>#<番号>=<選択肢>`。判断役の分は pass|fail）。推奨どおりなら `<工程>=推奨`、"
           "全部推奨どおりなら `answer --recommended`。どれを選んだかは judge/judgments.jsonl に残る")
 
 
@@ -958,7 +991,12 @@ def cmd_answer(a):
     p = pipeline()
     with locked():
         st = state()
-        pend = {x["step"]: x for x in pending_list(st, p)}
+        items = pending_list(st, p)
+        pend = {x["key"]: x for x in items}
+        multi = {}
+        for x in items:
+            if x["key"] != x["step"]:
+                multi.setdefault(x["step"], []).append(x["key"])
         pairs = []
         for arg in a.pairs:
             if "=" not in arg:
@@ -974,6 +1012,9 @@ def cmd_answer(a):
         plan = []
         for step, choice in pairs:
             x = pend.get(step)
+            if x is None and step in multi:
+                raise LoopError(f"{step} には問いが{len(multi[step])}件あります。`{multi[step][0]}=<選択肢>` のように番号を付けて答えてください"
+                                f"（{', '.join(multi[step])}）")
             if x is None:
                 raise LoopError(f"{step} は人待ちではありません（`pending`で一覧）")
             if x["kind"] == "blocked":
@@ -985,14 +1026,19 @@ def cmd_answer(a):
             if choice not in x["options"]:
                 raise LoopError(f"{step} の選択肢に {choice} はありません（{' / '.join(x['options'])}）")
             plan.append((step, choice, x))
+        if len({x["key"] for _, _, x in plan}) != len(plan):
+            raise LoopError("同じ問いに2回答えています")
         out = []
-        for step, choice, x in plan:
+        for key, choice, x in plan:
+            step = x["step"]
             if x["kind"] == "judge":
                 n = decide_core(st, p, step, choice, a.note)
                 out.append(f"{step}: {choice} → {LABEL[st['steps'][step]['status']]}（正解{n}件）")
                 continue
             s = st["steps"][step]
-            ask = s.pop("ask")
+            asks = open_asks(s)
+            ask = next(k for k in asks if k["jid"] == x["jid"])
+            asks.remove(ask)
 
             def label(r, jid=ask["jid"], choice=choice):
                 if r.get("id") == jid:
@@ -1001,12 +1047,21 @@ def cmd_answer(a):
                     return True
                 return False
             rewrite_judgments(label)
-            s["status"], s["needs_human"], s["blocker"], s["shards"] = "in_progress", False, None, {}
             s.setdefault("answered", []).append({"question": ask["question"], "answer": choice, "note": a.note or ""})
             note(s, f"人の答え: {ask['question']} → {choice}" + (f"（{a.note}）" if a.note else ""))
-            out.append(f"{step}: {choice} → 作業中（工程役へこの答えを渡して続ける）")
+            head = f"{key}: 問い「{ask['question']}」→ 答え「{choice}」"
+            if asks:
+                s["blocker"] = f"人に選んでもらう問い{len(asks)}件: {asks[0]['question']}"
+                out.append(f"{head} → 残りの問い{len(asks)}件の答え待ち")
+                continue
+            s["status"], s["needs_human"], s["blocker"], s["shards"] = "in_progress", False, None, {}
+            out.append(f"{head} → 作業中（工程役へこの答えを渡して続ける）")
         save_json(STATE, st)
     print("\n".join(out))
+    if any(x["kind"] == "ask" for _, _, x in plan):
+        # 言い換えて写すと、判断の記録（judgments.jsonl）と成果物が食い違う（IMPROVEMENTS 2026-09-29）
+        print("※ 成果物へ写す時は、上の「問い」と「答え」の文言をそのまま使う（言い換えない）。"
+              "工程役へもこの2つをそのまま渡す")
 
 
 def cmd_override(a):
@@ -1266,8 +1321,8 @@ def cmd_block(a):
         for x, name in ((a.recommend, "--recommend"), (a.judge_answer, "--judge-answer")):
             if x is not None and x not in a.options:
                 raise LoopError(f"{name} の {x} が選択肢（{' / '.join(a.options)}）にありません")
-    elif a.options or a.recommend or a.judge_answer:
-        raise LoopError("--options・--recommend・--judge-answer は --ask と一緒に使います")
+    elif a.options or a.recommend or a.judge_answer or a.context:
+        raise LoopError("--options・--recommend・--judge-answer・--context は --ask と一緒に使います")
     p = pipeline()
     cfg = p.get("judge", {})
     with locked():
@@ -1289,7 +1344,7 @@ def cmd_block(a):
         auto = (a.judge_answer is not None and th is not None and conf >= th
                 and not audit_pick(jid, cfg.get("audit_rate", 0.0)))
         row = {"id": jid, "t": now(), "run": st["run_id"], "step": a.step, "kind": "ask", "question": qid,
-               "question_text": a.ask, "options": a.options, "recommend": a.recommend, "reason": a.reason,
+               "question_text": a.ask, "context": a.context or "", "options": a.options, "recommend": a.recommend, "reason": a.reason,
                "answer": a.judge_answer, "confidence": conf, "decision": "auto_answer" if auto else "escalate",
                "judge_reason": a.judge_reason or "", "human_answer": None, "note": ""}
         JUDGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1301,13 +1356,18 @@ def cmd_block(a):
             msg = (f"{a.step}: 判断役の答え {a.judge_answer} で進めます（確信度{conf:.2f}≧閾値{th:.2f}）。"
                    f"工程役へこの答えを渡して続ける。誤りなら `override {jid} <正しい答え>`")
         else:
+            # 同じ工程の2つ目の問いは1つ目に並べる（上書きすると1つ目が答えられないまま消える。IMPROVEMENTS 2026-09-29）
+            asks = open_asks(s)
+            asks.append({"jid": jid, "n": s["asks"], "qid": qid, "question": a.ask, "context": a.context or "",
+                         "options": a.options, "recommend": a.recommend,
+                         "judge": {"answer": a.judge_answer, "confidence": conf, "reason": a.judge_reason or ""}
+                         if a.judge_answer is not None else None})
+            s["open_asks"] = asks
             s["status"], s["needs_human"] = "blocked", True
-            s["blocker"] = f"人に選んでもらう問い: {a.ask}"
-            s["ask"] = {"jid": jid, "qid": qid, "question": a.ask, "options": a.options, "recommend": a.recommend,
-                        "judge": {"answer": a.judge_answer, "confidence": conf, "reason": a.judge_reason or ""}
-                        if a.judge_answer is not None else None}
+            s["blocker"] = f"人に選んでもらう問い: {a.ask}" if len(asks) == 1 else f"人に選んでもらう問い{len(asks)}件: {asks[0]['question']}"
             note(s, f"停止（人の選択待ち）: {a.ask}")
-            msg = f"{a.step} を止めました（人の選択待ち）: {a.ask}。`loopctl.py pending` に並びます"
+            msg = (f"{a.step} を止めました（人の選択待ち）: {a.ask}。`loopctl.py pending` に並びます"
+                   + (f"（この工程の問いは{len(asks)}件。まとめて答えられる）" if len(asks) > 1 else ""))
         save_json(STATE, st)
     print(msg)
 
@@ -1322,6 +1382,7 @@ def cmd_unblock(a):
         s["blocker"] = None
         s["needs_human"] = False
         s.pop("ask", None)
+        s.pop("open_asks", None)
         s["shards"] = {}
         note(s, f"再開: {a.note or ''}")
         save_json(STATE, st)
@@ -1506,6 +1567,7 @@ def main(argv=None):
     bl.add_argument("--recommend", help="推奨する選択肢"); bl.add_argument("--qid", help="問いの型のid（較正の単位。既定 ask:<工程の型>）")
     bl.add_argument("--judge-answer", help="判断役の答え"); bl.add_argument("--confidence", type=float, help="判断役の確信度")
     bl.add_argument("--judge-reason", help="判断役の根拠")
+    bl.add_argument("--context", help="人が選ぶための背景（元の問い・決めた答え方の要点・どれを選ぶと何が起きるか・迷った点）")
     pe = sub.add_parser("pending", help="人待ちの一覧（選択肢・推奨・判断役の答え）"); pe.add_argument("--json", action="store_true")
     an = sub.add_parser("answer", help="人待ちへまとめて答える"); an.add_argument("pairs", nargs="*", help="<工程>=<選択肢>（推奨どおりなら <工程>=推奨）")
     an.add_argument("--recommended", action="store_true", help="名指ししていない人待ちは、推奨どおりに答える"); an.add_argument("--note", default="")

@@ -2,3 +2,5 @@
 state.json
 state.json.tmp
 .state.lock
+# 工程役ごとの一時置き場（start が作り、begin が消す）
+tmp/

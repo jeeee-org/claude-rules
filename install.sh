@@ -12,7 +12,7 @@
 # Codex をメインエージェントに使わないPCでは Codex 側の配置を丸ごと省ける:
 #   ./install.sh --no-codex        （または CLAUDE_RULES_INSTALL_CODEX=0 ./install.sh）
 # 複数PCへの事前配布を可能にするため、CLI未導入でも両設定ディレクトリを作る。
-# **$CLAUDE_CONFIG_DIR/settings.json を書き換えます**（記録の関門フック2件を hooks へ登録。
+# **$CLAUDE_CONFIG_DIR/settings.json を書き換えます**（記録の関門・AI帰属行・資格情報の関門のフックを hooks へ登録。
 # 控えを settings.json.bak に取ります）。登録を止めるなら:
 #   ./install.sh --no-hook-register   （または CLAUDE_RULES_REGISTER_HOOKS=0 ./install.sh）
 # あわせて表示の設定（settings/display.json。思考の要約・focus表示）を
@@ -169,26 +169,31 @@ cp "$SRC_DIR/hooks/commit-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-reco
 cp "$SRC_DIR/hooks/commit-record-audit.sh" "$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
 cp "$SRC_DIR/hooks/push-record-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh"
 cp "$SRC_DIR/hooks/push-attribution-guard.sh" "$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh"
+cp "$SRC_DIR/hooks/secret-read-guard.py" "$CLAUDE_CONFIG_DIR/hooks/secret-read-guard.py"
 chmod +x "$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh" \
          "$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh" \
          "$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh" \
-         "$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh"
+         "$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh" \
+         "$CLAUDE_CONFIG_DIR/hooks/secret-read-guard.py"
 GUARD_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-guard.sh"
 AUDIT_CMD="$CLAUDE_CONFIG_DIR/hooks/commit-record-audit.sh"
 PUSH_CMD="$CLAUDE_CONFIG_DIR/hooks/push-record-guard.sh"
 ATTR_CMD="$CLAUDE_CONFIG_DIR/hooks/push-attribution-guard.sh"
+# 資格情報のファイルを丸ごと出力する読み方を止める（IMPROVEMENTS 2026-09-29）。Read・Grepも見る
+SECRET_CMD="$CLAUDE_CONFIG_DIR/hooks/secret-read-guard.py"
+SECRET_MATCHER="Bash|Read|Grep"
 SETTINGS="$CLAUDE_CONFIG_DIR/settings.json"
 GUARD_REGISTERED=0
 
-register_hook() { # register_hook <PreToolUse|PostToolUse> <コマンド>
-  local event="$1" cmd="$2"
+register_hook() { # register_hook <PreToolUse|PostToolUse> <コマンド> [matcher（既定 Bash）]
+  local event="$1" cmd="$2" matcher="${3:-Bash}"
   if jq -e --arg c "$cmd" --arg e "$event" \
        '[.hooks[$e][]?.hooks[]?.command] | index($c)' "$SETTINGS" >/dev/null 2>&1; then
     return 1   # 登録済み（再installで二重に増やさない）
   fi
-  jq --arg c "$cmd" --arg e "$event" '.hooks = (.hooks // {})
+  jq --arg c "$cmd" --arg e "$event" --arg m "$matcher" '.hooks = (.hooks // {})
      | .hooks[$e] = ((.hooks[$e] // [])
-       + [{matcher:"Bash",hooks:[{type:"command",command:$c,timeout:10}]}])' \
+       + [{matcher:$m,hooks:[{type:"command",command:$c,timeout:10}]}])' \
      "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   return 0
 }
@@ -203,6 +208,7 @@ register_record_guard() {
     echo "   PreToolUse  → $GUARD_CMD" >&2
     echo "   PreToolUse  → $PUSH_CMD" >&2
     echo "   PreToolUse  → $ATTR_CMD" >&2
+    echo "   PreToolUse  → $SECRET_CMD（matcher は \"$SECRET_MATCHER\"）" >&2
     echo "   PostToolUse → $AUDIT_CMD" >&2
     echo "   （どちらも matcher は \"Bash\"、timeout 10）" >&2
     return 0
@@ -219,6 +225,8 @@ register_record_guard() {
          "$SETTINGS" >/dev/null 2>&1 ||
      ! jq -e --arg c "$ATTR_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
          "$SETTINGS" >/dev/null 2>&1 ||
+     ! jq -e --arg c "$SECRET_CMD" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c)' \
+         "$SETTINGS" >/dev/null 2>&1 ||
      ! jq -e --arg c "$AUDIT_CMD" '[.hooks.PostToolUse[]?.hooks[]?.command] | index($c)' \
          "$SETTINGS" >/dev/null 2>&1; then
     echo "※ 記録の関門を有効にするため、$SETTINGS のhooksへ登録します（控え: $SETTINGS.bak）。"
@@ -228,10 +236,11 @@ register_record_guard() {
   register_hook PreToolUse "$GUARD_CMD" && added=1
   register_hook PreToolUse "$PUSH_CMD" && added=1
   register_hook PreToolUse "$ATTR_CMD" && added=1
+  register_hook PreToolUse "$SECRET_CMD" "$SECRET_MATCHER" && added=1
   register_hook PostToolUse "$AUDIT_CMD" && added=1
   if [ "$added" = 1 ]; then
     GUARD_REGISTERED=2
-    echo "  - settings.jsonに記録の関門とAI帰属行の関門を登録しました（入口・pushの関門2本=PreToolUse、後追い=PostToolUse）"
+    echo "  - settings.jsonに記録の関門・AI帰属行の関門・資格情報の関門を登録しました（入口・pushの関門2本・資格情報=PreToolUse、後追い=PostToolUse）"
   else
     GUARD_REGISTERED=1
   fi
@@ -366,12 +375,13 @@ echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える
 echo "  - skills/install-rules（共通ルールの導入・更新・PJへの書き込みを案内する）"
 echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
 if [ "$GUARD_REGISTERED" = 0 ]; then
-  echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh・push-attribution-guard.sh（コピーのみ。登録は上記の案内を参照）"
+  echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh・push-attribution-guard.sh・secret-read-guard.py（コピーのみ。登録は上記の案内を参照）"
 else
   echo "  - hooks/commit-record-guard.sh（入口の関門。PreToolUse）"
   echo "  - hooks/push-record-guard.sh（**本丸**。pushの関門。PreToolUse）"
   echo "  - hooks/commit-record-audit.sh（見逃しの後追い。PostToolUse）"
   echo "  - hooks/push-attribution-guard.sh（AI帰属行の関門。pushの直前。PreToolUse）"
+  echo "  - hooks/secret-read-guard.py（資格情報のファイルを丸ごと出す読み方を止める。PreToolUse。Bash・Read・Grep）"
 fi
 echo "  - tools/check-limits.sh（常時ロード上限の判定。§2 から参照）"
 echo "  - tools/check-record-guard.sh（記録の関門の疎通確認）"

@@ -497,7 +497,7 @@ class LoopRunTest(unittest.TestCase):
         self.ask('--judge-answer', 'B', '--confidence', '0.6')
         s = self.state()['steps']['requirements']
         self.assertEqual(s['status'], 'blocked')
-        self.assertEqual(s['ask']['options'], ['A', 'B'])
+        self.assertEqual(s['open_asks'][0]['options'], ['A', 'B'])
         out = self.ctl('pending').stdout
         self.assertIn('ログインの失敗回数の上限', out)
         self.assertIn('推奨: A', out)
@@ -508,6 +508,51 @@ class LoopRunTest(unittest.TestCase):
         self.assertEqual(s['answered'][-1]['answer'], 'B')
         r = self.rows()[-1]
         self.assertEqual((r['kind'], r['recommend'], r['answer'], r['human_answer']), ('ask', 'A', 'B', 'B'))
+
+    def test_1工程に問いを複数並べ番号でまとめて答えられる(self):
+        self.ask('--context', '規約は3回、画面の文言は5回と書いている')
+        self.ctl('block', 'requirements', '別の論点', '--ask', 'ロックの解除は誰がするか',
+                 '--options', '本人', '管理者', '--recommend', '管理者')
+        s = self.state()['steps']['requirements']
+        self.assertEqual([k['question'] for k in s['open_asks']],
+                         ['ログインの失敗回数の上限はどちらか', 'ロックの解除は誰がするか'])
+        out = self.ctl('pending').stdout
+        self.assertIn('requirements#1', out)
+        self.assertIn('requirements#2', out)
+        self.assertIn('背景: 規約は3回', out)
+        p = self.ctl('answer', 'requirements=A', ok=False)
+        self.assertIn('requirements#1=<選択肢>', p.stderr)
+        out = self.ctl('answer', 'requirements#2=本人').stdout
+        self.assertIn('問い「ロックの解除は誰がするか」→ 答え「本人」', out)
+        self.assertIn('残りの問い1件', out)
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'blocked')
+        self.assertIn('requirements（工程役の問い）', self.ctl('pending').stdout)  # 残り1つなら番号なしで答えられる
+        self.ctl('answer', '--recommended')
+        s = self.state()['steps']['requirements']
+        self.assertEqual(s['status'], 'in_progress')
+        self.assertEqual([x['answer'] for x in s['answered']], ['本人', 'A'])
+        self.assertEqual([r['human_answer'] for r in self.rows()[-2:]], ['A', '本人'])
+
+    def test_1問だった頃の状態も読める(self):
+        self.ask()
+        st = self.state()
+        s = st['steps']['requirements']
+        s['ask'] = dict(s.pop('open_asks')[0])
+        (self.loop / 'state.json').write_text(json.dumps(st, ensure_ascii=False))
+        self.assertIn('ログインの失敗回数', self.ctl('pending').stdout)
+        self.ctl('answer', 'requirements=A')
+        self.assertEqual(self.state()['steps']['requirements']['status'], 'in_progress')
+
+    def test_着手で工程ごとの一時置き場を作りbeginで消す(self):
+        self.ctl('begin')
+        out = self.ctl('start', 'requirements').stdout
+        tmp = self.loop / 'tmp/requirements/main'
+        self.assertTrue(tmp.is_dir())
+        self.assertIn('.claude/loop/tmp/requirements/main', out)
+        (tmp / 'x.txt').write_text('前の実行の実測')
+        self.ctl('finish')
+        self.ctl('begin')
+        self.assertFalse((self.loop / 'tmp').exists())
 
     def test_推奨どおりの答えもどれを選んだかが残る(self):
         self.ask()
