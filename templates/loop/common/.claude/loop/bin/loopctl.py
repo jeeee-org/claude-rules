@@ -470,15 +470,28 @@ def loose_aggregators(p: dict, ids: set) -> list[str]:
 
 
 def loose_branches(p: dict, ids: set) -> list[str]:
-    """後ろのどの工程の前提にもなっていない工程（最後の工程は除く）。
+    """後ろのどの工程の前提にもなっていない工程のうち、集約の工程より前で行き止まる枝。
 
     集約の工程がある時だけ見る。枝の結果が集約に入らないのは、工程の定義の after の書き漏らしで起きる
-    （IMPROVEMENTS 2026-09-29）。集約の無いループでは、項目ごとの最後の工程が行き止まりなのは普通。"""
+    （IMPROVEMENTS 2026-09-29）。集約の無いループでは、項目ごとの最後の工程が行き止まりなのは普通。
+    終端は並び順で決めない。項目ごとの工程は展開で並びの後ろに付くので、固定工程の本当の終端
+    （setup→summary→cleanup の cleanup）が「並びの最後」から外れる。集約の工程そのものと、集約を
+    （間接にでも）前提にする終端は、集約の後の仕上げなので知らせない。"""
     steps = [sd for sd in p["steps"] if sd["id"] in ids]
-    if not steps or not loose_aggregators(p, ids):
+    aggs = set(loose_aggregators(p, ids))
+    if not steps or not aggs:
         return []
     needed = {d for sd in steps for d in after_of(p, sd["id"])}
-    return [sd["id"] for sd in steps[:-1] if sd["id"] not in needed]
+    memo: dict[str, bool] = {}
+
+    def after_agg(sid: str, seen=frozenset()) -> bool:
+        if sid in memo:
+            return memo[sid]
+        r = sid in aggs or any(d not in seen and after_agg(d, seen | {sid}) for d in after_of(p, sid))
+        memo[sid] = r
+        return r
+
+    return [sd["id"] for sd in steps if sd["id"] not in needed and not after_agg(sd["id"])]
 
 
 def parse_items_text(text: str) -> list[str]:

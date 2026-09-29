@@ -1196,6 +1196,18 @@ class PerItemTest(unittest.TestCase):
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         return p
 
+
+    def test_固定工程の終端は項目ごとの工程が後ろに付いても枝と知らせない(self):
+        cfg = json.loads((self.loop / 'pipeline.json').read_text())
+        cfg['per_item']['items'] = ['q1', 'q2']  # report が2つを待つ集約になる
+        cfg['steps'].append({'id': 'cleanup', 'worker': 'step-worker', 'reviewer': None, 'gate': None,
+                             'after': ['report'], 'judge_questions': []})
+        cfg['steps'].insert(1, {'id': 'followup', 'worker': 'step-worker', 'reviewer': None, 'gate': None,
+                                'after': ['triage'], 'judge_questions': []})
+        (self.loop / 'pipeline.json').write_text(json.dumps(cfg, ensure_ascii=False))
+        err = self.ctl('begin').stderr
+        self.assertIn('枝の工程があります: followup。', err)
+        self.assertNotIn('cleanup', err.split('。')[0])
     def state(self):
         return json.loads((self.loop / 'state.json').read_text())
 
