@@ -409,6 +409,41 @@ class LoopRunTest(unittest.TestCase):
         payload.update(kw)
         return self.hook('stop-guard.py', payload)
 
+    def test_全工程が完了したら閉じるよう促し閉じなければ閉じる(self):
+        self.ctl('begin')
+        st = self.state()
+        for s in st['steps'].values():
+            s['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st, ensure_ascii=False))
+        for _ in range(3):
+            out = self.stop()
+            self.assertEqual(out['decision'], 'block')
+            self.assertIn('finish', out['reason'])
+        out = self.stop()
+        self.assertIn('実行を閉じました', out['systemMessage'])
+        st = self.state()
+        self.assertEqual((st['active'], st['finished']), (False, True))
+        self.assertIsNone(self.stop())
+
+    def test_人待ちで止まる時は閉じるよう促さない(self):
+        self.ctl('begin')
+        st = self.state()
+        for s in st['steps'].values():
+            s['status'] = 'done'
+        next(iter(st['steps'].values()))['status'] = 'blocked'
+        (self.loop / 'state.json').write_text(json.dumps(st, ensure_ascii=False))
+        self.assertIsNone(self.stop())
+
+    def test_集約の工程が待たない枝をbeginが知らせる(self):
+        def fn(cfg):
+            ids = [s['id'] for s in cfg['steps']]
+            cfg['steps'][-1]['after'] = ids[:2]      # 最後の工程が2つを集約する
+            cfg['steps'][2]['after'] = [ids[0]]     # 3つ目は枝。集約の前提に入っていない
+        self.set_pipeline(fn)
+        p = self.ctl('begin')
+        self.assertIn('枝の工程', p.stderr)
+        self.assertIn(json.loads((self.loop / 'pipeline.json').read_text())['steps'][2]['id'], p.stderr)
+
     def test_未完了があれば残りを名指しして続けさせる(self):
         self.ctl('begin')
         out = self.stop()

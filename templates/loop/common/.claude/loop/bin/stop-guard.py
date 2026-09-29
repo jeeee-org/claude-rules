@@ -19,6 +19,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import loopctl as lc  # noqa: E402
 
 
+def nudge_finish(p: dict) -> int:
+    """全工程が完了したのに実行が開いたまま止まろうとしている。retroを貼って finish するよう促し、
+    促しても閉じなければ自分で閉じる（統括役が閉じず、人が finish する回が続いた。IMPROVEMENTS 2026-09-29）。"""
+    limit = p.get("max_auto_continues", 3)
+    with lc.locked():
+        st = lc.load_json(lc.STATE)
+        g = st.setdefault("stop_guard", {"count": 0, "fingerprint": ""})
+        if g.get("fingerprint") != "finish":
+            g["count"], g["fingerprint"] = 0, "finish"
+        if g["count"] >= limit:
+            st["active"], st["finished"], st["finished_at"] = False, True, lc.now()
+            st["stop_guard"] = {"count": 0, "fingerprint": ""}
+            lc.save_json(lc.STATE, st)
+            print(json.dumps({"systemMessage": "ループ: 全工程が完了したまま閉じられなかったので、実行を閉じました（finish）。"
+                              "振り返り（`loopctl.py retro`）が candidates.md に無ければ貼ってください"}, ensure_ascii=False))
+            return 0
+        g["count"] += 1
+        lc.save_json(lc.STATE, st)
+    reason = ("全工程が完了しています。実行を閉じてから止まってください: ①`loopctl.py retro`の出力を candidates.md の"
+              "「振り返り」節へ貼ってcommit（メッセージに`記録なし: ループの記録のみ`）②`loopctl.py finish`。"
+              "報告は finish と同じメッセージか、その後に書いてください。")
+    print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -51,7 +76,10 @@ def main() -> int:
 
     items = lc.open_items(st, p)
     if not items:
-        return 0  # 全部終わった、または残りは人待ち（止まってよい止まり方）
+        steps = st.get("steps") or {}
+        if steps and all(s["status"] == "done" for s in steps.values()):
+            return nudge_finish(p)
+        return 0  # 残りは人待ち（止まってよい止まり方）
 
     with lc.locked():
         st = lc.load_json(lc.STATE)

@@ -451,11 +451,34 @@ def cmd_begin(a):
         print("※ 前の実行の成果物が残っています: " + ", ".join(left[:10]) + (" ほか" if len(left) > 10 else "")
               + "。工程役には全文を書き直させる（ゲートの need_file は、この実行の開始より前の更新なら落とす）",
               file=sys.stderr)
+    loose = loose_branches(p, set(st["steps"]))
+    if loose:
+        print(f"※ 後ろのどの工程も前提にしていない枝の工程があります: {', '.join(loose[:10])}"
+              + (" ほか" if len(loose) > 10 else "")
+              + f"。集約の工程（{', '.join(loose_aggregators(p, set(st['steps'])))}）はこれを待たずに進み、結果が入らない。"
+              "入れるなら集約の工程の after に足す（`*/<工程>`の形も使える）。意図した枝なら気にしなくてよい", file=sys.stderr)
     blocked = sorted({o for sd in p["steps"] for o in sd.get("outputs", []) if SUBAGENT_BLOCKED_MD.match(Path(o).name)})
     if blocked:
         print("※ 成果物の名前が report・summary・findings・analysis で始まる .md です: " + ", ".join(blocked)
               + "。Claude Codeはサブエージェントの Write でこの名前を止める（工程役はBashで書くことになる）。"
               "避けるなら pipeline.json の outputs の名前を変える", file=sys.stderr)
+
+
+def loose_aggregators(p: dict, ids: set) -> list[str]:
+    """前提を2つ以上待つ工程（集約の工程）。"""
+    return [sd["id"] for sd in p["steps"] if sd["id"] in ids and len(after_of(p, sd["id"])) >= 2]
+
+
+def loose_branches(p: dict, ids: set) -> list[str]:
+    """後ろのどの工程の前提にもなっていない工程（最後の工程は除く）。
+
+    集約の工程がある時だけ見る。枝の結果が集約に入らないのは、工程の定義の after の書き漏らしで起きる
+    （IMPROVEMENTS 2026-09-29）。集約の無いループでは、項目ごとの最後の工程が行き止まりなのは普通。"""
+    steps = [sd for sd in p["steps"] if sd["id"] in ids]
+    if not steps or not loose_aggregators(p, ids):
+        return []
+    needed = {d for sd in steps for d in after_of(p, sd["id"])}
+    return [sd["id"] for sd in steps[:-1] if sd["id"] not in needed]
 
 
 def parse_items_text(text: str) -> list[str]:

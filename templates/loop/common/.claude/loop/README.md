@@ -64,13 +64,14 @@ claude --agent loop-conductor            # 統括役をメインセッション�
 
 ## 人の出番
 
+- `begin`が「枝の工程」を知らせたら: 前提を2つ以上待つ集約の工程があるのに、後ろのどの工程も前提にしていない工程がある。その結果は集約に入らないので、入れるなら集約の工程の`after`に足す
 - 人待ちをまとめて見る: `loopctl.py pending`。工程役の問い（問い・背景・選択肢・推奨・判断役の答え）と、判断役が人へ回した判断（推奨はpass|fail。それぞれ選ぶと何が起きるか）と、理由だけの停止が並ぶ。1工程に問いが複数あれば`<工程>#<番号>`で1つずつ並ぶ
 - まとめて答える: `loopctl.py answer <工程>=<選択肢> <工程>#2=<選択肢> ... --note "<理由>"`。答えは問いと答えの文言のまま返るので、成果物へはそれを写す（言い換えない）。推奨どおりなら`<工程>=推奨`、名指ししていない分を全部推奨どおりにするなら`--recommended`。**どれを選んだかは`judgments.jsonl`に残り**、判断役の学習の材料になる（`calibrate --apply`で`lessons.md`の「人の裁定」に載る）
 - 1工程ずつなら従来どおり`loopctl.py decide <工程> pass|fail --note "<理由>"`。外部待ちが解けたら`loopctl.py unblock <工程>`
 - 実行全体の上限で止まった: 時間なら`loopctl.py resume --extend <秒>`（予算を延ばして再開。延ばさずに`resume`するとすぐまた止まる）。ほかの上限は`pipeline.json`の`limits`を見直し、`accept-self`してから`resume`
 - 自動で通った判断が誤っていた: `loopctl.py override <判断id> <正しい答え> --note "<理由>"`（判断idは`judge/judgments.jsonl`）
 - 人が付き添って対話で回す時: `loopctl.py pause`（Stopフックの催促が止まる。工程役の報告の形は引き続き確かめる）
-- 実行を閉じる: `loopctl.py finish`（以後は工程役の報告の形も確かめない）。閉じた実行に残った人待ちは`status`・`pending`に「閉じた実行の残り」と出て、次の`begin`で消える
+- 実行を閉じる: `loopctl.py finish`（以後は工程役の報告の形も確かめない）。全工程が完了すると統括役が閉じる（閉じずに止まろうとするとStopフックが促し、促しても閉じなければ`max_auto_continues`回目の後にフックが閉じる）。閉じた実行に残った人待ちは`status`・`pending`に「閉じた実行の残り」と出て、次の`begin`で消える
 
 ## 判断役を育てる（較正）
 
