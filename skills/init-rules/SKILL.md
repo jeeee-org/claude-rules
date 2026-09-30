@@ -42,7 +42,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 ```markdown
 # AGENTS.md — <プロジェクト名>
 
-このファイルはClaude Code / Codexへのプロジェクト指示書。**会話開始時に必ず読む。**
+このファイルはClaude Code / Codexへのプロジェクト指示書（自動で読み込まれる）。
 共通の進行管理・Git・記録ルールはこのファイル先頭の共通ルールに従う。
 ここには**このPJ固有のことだけ**を書く。
 

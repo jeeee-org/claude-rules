@@ -35,19 +35,19 @@ VARIANTS = {
     'embed-claude': {
         'flags': {'claude'},
         'vars': {'PJ': 'CLAUDE.md', 'LIMIT_COMMON': '共通ルールのブロック', 'LIMIT_PJ': 'PJ CLAUDE.md（ブロックの外）',
-                 'CHECK_LIMITS': '.claude-rules/check-limits.sh', 'START_SCOPE': '共通ルール＋PJ固有',
+                 'CHECK_LIMITS': '.claude-rules/check-limits.sh',
                  'SKILL_PATH': _CLAUDE_SKILL},
     },
     'embed-codex': {
         'flags': {'codex'},
         'vars': {'PJ': 'AGENTS.md', 'LIMIT_COMMON': '共通ルールのブロック', 'LIMIT_PJ': 'PJ AGENTS.md（ブロックの外）',
-                 'CHECK_LIMITS': '.claude-rules/check-limits.sh', 'START_SCOPE': '共通ルール＋PJ固有',
+                 'CHECK_LIMITS': '.claude-rules/check-limits.sh',
                  'SKILL_PATH': _CODEX_SKILL},
     },
     'embed-both': {
         'flags': {'claude', 'codex'},
         'vars': {'PJ': 'AGENTS.md', 'LIMIT_COMMON': '共通ルールのブロック', 'LIMIT_PJ': 'PJ AGENTS.md（ブロックの外）',
-                 'CHECK_LIMITS': '.claude-rules/check-limits.sh', 'START_SCOPE': '共通ルール＋PJ固有',
+                 'CHECK_LIMITS': '.claude-rules/check-limits.sh',
                  'SKILL_PATH': _CLAUDE_SKILL + '（Codexは`.agents/skills/`）'},
     },
 }
