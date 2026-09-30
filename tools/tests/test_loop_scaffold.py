@@ -1155,6 +1155,53 @@ class SharedTreeGuardTest(unittest.TestCase):
                     f'cd {self.other} && git stash', 'echo "git stash"'):
             self.assertFalse(self.denied(cmd), cmd)
 
+    def scratch(self, *args):
+        return subprocess.run([sys.executable, str(self.loop / 'bin/loopctl.py'), 'scratch', *args],
+                              env=self.env, capture_output=True, text=True)
+
+    def test_scratchは未コミットの変更ごと外に写しを作り消せる(self):
+        (self.root / 'a.txt').write_text('changed\n')
+        (self.root / 'new.txt').write_text('new\n')
+        p = self.scratch()
+        self.assertEqual(p.returncode, 0, p.stderr)
+        d = Path(p.stdout.strip())
+        self.assertTrue(d.name.startswith('loop-scratch-'))
+        self.assertNotEqual(d.resolve(), self.root)
+        self.assertEqual((d / 'a.txt').read_text(), 'changed\n')
+        self.assertEqual((d / 'new.txt').read_text(), 'new\n')
+        h = self.scratch('--head')
+        self.assertEqual((Path(h.stdout.strip()) / 'a.txt').read_text(), 'a\n')
+        self.assertFalse((Path(h.stdout.strip()) / 'new.txt').exists())
+        for x in (d, Path(h.stdout.strip())):
+            self.assertEqual(self.scratch('--remove', str(x)).returncode, 0)
+            self.assertFalse(x.exists())
+        self.assertEqual((self.root / 'a.txt').read_text(), 'changed\n')  # 共有の作業ツリーは触らない
+
+    def test_scratchは毎回別の場所に作る(self):
+        a, b = self.scratch().stdout.strip(), self.scratch().stdout.strip()
+        self.assertNotEqual(a, b)
+        for x in (a, b):
+            self.scratch('--remove', x)
+
+    def test_scratchが作れなければ失敗で終わり壊す処理へ進ませない(self):
+        env = dict(self.env, LOOP_DIR=str(self.loop))
+        # HEADが無いリポ（作れない場合の代表）: 空のリポへ移したループで試す
+        empty = Path(self._tmp.name) / 'empty'
+        empty.mkdir()
+        subprocess.run(['git', 'init', '-q', str(empty)], check=True)
+        shutil.copytree(self.root / '.claude', empty / '.claude')
+        p = subprocess.run([sys.executable, str(empty / '.claude/loop/bin/loopctl.py'), 'scratch'],
+                           env=dict(env, LOOP_DIR=str(empty / '.claude/loop')), capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+        self.assertEqual(p.stdout, '')
+        self.assertIn('写しを作れませんでした', p.stderr)
+        self.assertIn('共有の作業ツリーで代わりに試さない', p.stderr)
+
+    def test_scratchで作っていない場所は消さない(self):
+        p = self.scratch('--remove', str(self.other))
+        self.assertEqual(p.returncode, 2)
+        self.assertTrue(self.other.exists())
+
     def test_実行の外と統括役とループ外のエージェントには口を出さない(self):
         self.assertFalse(self.denied('git stash'))  # 実行が無い
         self.ctl('begin')
@@ -1403,6 +1450,25 @@ class LimitAndRetroTest(PerItemTest):
         x = json.loads(self.ctl('retro', '--json').stdout)['items'][0]
         self.assertEqual((x['elapsed_main'], x['elapsed']), (200, 4900))
         self.assertIn('本線200s・人待ちを含む全体4900s', self.ctl('retro').stdout)
+
+    def test_止まっていた区間を控え振り返りの経過から除く(self):
+        self.ctl('begin', '--items', 'q1')
+        self.ctl('start', 'triage')
+        self.env['LOOP_NOW'] = '1100'
+        self.ctl('block', 'triage', '人の指示で止める')
+        self.env['LOOP_NOW'] = '1400'
+        self.ctl('unblock', 'triage')
+        self.assertEqual(self.state()['steps']['triage']['blocked_spans'], [[1100.0, 1400.0]])
+        st = self.state()
+        mk = lambda a, b, spans=(): {'status': 'done', 'shards': {}, 'rework': 0, 'blocker': None,
+                                     'blocked_spans': [list(x) for x in spans],
+                                     'notes': [{'t': a, 'text': '着手 shard=main'}, {'t': b, 'text': '完了'}]}
+        st['steps']['q1/decide'] = mk(100, 5000, [(200, 4000), (3000, 4500)])  # 重なりは1回だけ数える
+        st['steps']['q1/fix'] = mk(5000, 5100)
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        x = json.loads(self.ctl('retro', '--json').stdout)['items'][0]
+        self.assertEqual((x['elapsed'], x['blocked']), (5000, 4300))
+        self.assertIn('700s（止まっていた4300sを除く。含めると5000s）', self.ctl('retro').stdout)
 
     def test_Writeが止められる成果物の名前はbeginで知らせる(self):
         cfg = json.loads((self.loop / 'pipeline.json').read_text())

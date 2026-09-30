@@ -21,6 +21,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from fnmatch import fnmatch
 from pathlib import Path
@@ -73,6 +74,8 @@ def load_json(path: Path, default=None):
 
 
 def save_json(path: Path, data) -> None:
+    if path == STATE and isinstance(data, dict):
+        track_blocked(data)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -224,6 +227,39 @@ def st_step(st: dict, sid: str) -> dict:
     if sid not in st["steps"]:
         raise LoopError(f"工程 {sid} は今回の実行にありません")
     return st["steps"][sid]
+
+
+def track_blocked(st: dict) -> None:
+    """工程が止まっていた区間を控える。止まる・再開する入口が多いので、状態を書く所で一括して見る。
+
+    振り返りの項目ごとの経過が、人の指示で止めていた時間まで含んで読み誤られた（IMPROVEMENTS 2026-09-30）。
+    """
+    t = now()
+    for s in st.get("steps", {}).values():
+        if s.get("status") == "blocked":
+            s.setdefault("blocked_since", t)
+        elif "blocked_since" in s:
+            s["blocked_spans"] = (s.get("blocked_spans", []) + [[s.pop("blocked_since"), t]])[-50:]
+
+
+def blocked_within(steps, lo: float, hi: float) -> int:
+    """工程たちが止まっていた区間の和集合のうち、[lo, hi]に入る秒数（並列の工程の重なりは1回だけ数える）。"""
+    spans = []
+    for s in steps:
+        spans += s.get("blocked_spans", [])
+        if "blocked_since" in s:
+            spans.append([s["blocked_since"], now()])
+    total, cur_a, cur_b = 0.0, None, None
+    for a, b in sorted((max(a, lo), min(b, hi)) for a, b in spans if min(b, hi) > max(a, lo)):
+        if cur_b is None or a > cur_b:
+            if cur_b is not None:
+                total += cur_b - cur_a
+            cur_a, cur_b = a, b
+        else:
+            cur_b = max(cur_b, b)
+    if cur_b is not None:
+        total += cur_b - cur_a
+    return int(total)
 
 
 def note(stp: dict, text: str) -> None:
@@ -1501,10 +1537,14 @@ def retro_data(st: dict, p: dict) -> dict:
         done = all(s["status"] == "done" for s in own.values()) and own
         ends = [b for _, b in ts if b]
         main_end = step_times(own[f"{it}/{last}"])[1] if last and f"{it}/{last}" in own else None
+        full = done and starts and ends
         items.append({"item": it, "done": bool(done), "rework": sum(s.get("rework", 0) for s in own.values()),
-                      "elapsed": int(max(ends) - min(starts)) if done and starts and ends else None,
+                      "elapsed": int(max(ends) - min(starts)) if full else None,
                       # 本線（型の最後の工程が終わるまで）。枝の人待ちの時間を含まない
                       "elapsed_main": int(main_end - min(starts)) if main_end and starts else None,
+                      # 工程が止まっていた（人待ち・人の指示で止めた）秒数。項目の遅さを比べる時はこれを引く
+                      "blocked": blocked_within(own.values(), min(starts), max(ends)) if full else None,
+                      "blocked_main": blocked_within(own.values(), min(starts), main_end) if main_end and starts else None,
                       "status": "完了" if done else next((LABEL[s["status"]] for s in own.values() if s["status"] != "done"), "未着手")})
     rows = [r for r in load_judgments() if r.get("run") == st["run_id"]]
     asks = [r for r in rows if r.get("kind") == "ask"]
@@ -1529,9 +1569,12 @@ def retro_data(st: dict, p: dict) -> dict:
 
 
 def item_elapsed(x: dict) -> str:
-    """項目の経過。本線と全体が違う（枝の人待ちがある）時は両方出す。"""
+    """項目の経過。本線と全体が違う（枝の人待ちがある）時は両方出す。止まっていた時間は除いた数を先に出す。"""
     m, t = x.get("elapsed_main"), x["elapsed"]
-    return f"本線{m}s・人待ちを含む全体{t}s" if m is not None and m != t else f"{t}s"
+    b, bm = x.get("blocked") or 0, x.get("blocked_main") or 0
+    if m is not None and m != t:
+        return f"本線{m - bm}s・人待ちを含む全体{t}s" + (f"（本線の止まっていた{bm}sを除く）" if bm else "")
+    return f"{t - b}s（止まっていた{b}sを除く。含めると{t}s）" if b else f"{t}s"
 
 
 def cmd_retro(a):
@@ -1557,6 +1600,65 @@ def cmd_retro(a):
     if d["blocked_now"]:
         out.append("- いま止まっている: " + "、".join(d["blocked_now"]))
     print("\n".join(out))
+
+
+SCRATCH_PREFIX = "loop-scratch-"
+
+
+def git(*args, cwd=None, **kw):
+    return subprocess.run(["git", *args], cwd=cwd or REPO, capture_output=True, **kw)
+
+
+def cmd_scratch(a):
+    """壊して試す・前と比べるための写しを、共有の作業ツリーの外に毎回新しい場所で作り、パスだけを標準出力へ出す。
+
+    工程役・レビュー役が自分で`git worktree add`して、前の写しが残っていて失敗したまま共有の作業ツリーで
+    壊してしまった（個人の開発PJで4回。IMPROVEMENTS 2026-09-30）。作れなければ失敗で終わるので、
+    `d=$(python3 .claude/loop/bin/loopctl.py scratch) || exit 1` の形で使えば、壊す処理へ進まない。
+    既定は未コミットの変更と追跡外の新しいファイルごと写す（工程の成果物を壊して試すため）。--head はコミット済みの版だけ。
+    """
+    if a.remove:
+        d = Path(a.remove).resolve()
+        if not d.name.startswith(SCRATCH_PREFIX):
+            raise LoopError(f"{d} は scratch で作った写しではありません（名前が {SCRATCH_PREFIX} で始まらない）")
+        git("worktree", "remove", "--force", str(d))
+        shutil.rmtree(d, ignore_errors=True)
+        git("worktree", "prune")
+        print(f"写しを消しました: {d}", file=sys.stderr)
+        return
+    d = Path(tempfile.mkdtemp(prefix=SCRATCH_PREFIX))
+
+    def fail(why: str):
+        git("worktree", "remove", "--force", str(d))
+        shutil.rmtree(d, ignore_errors=True)
+        git("worktree", "prune")
+        raise LoopError(f"写しを作れませんでした: {why}。壊す・比べる処理をせずに止まり、報告する"
+                        "（共有の作業ツリーで代わりに試さない）")
+
+    r = git("worktree", "add", "--detach", str(d), "HEAD", text=True)
+    if r.returncode != 0:
+        fail(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "git worktree add が失敗")
+    if not a.head:
+        diff = git("diff", "HEAD", "--binary")
+        if diff.returncode != 0:
+            fail("未コミットの変更を取り出せない")
+        if diff.stdout:
+            ap = subprocess.run(["git", "apply", "--binary", "--whitespace=nowarn", "-"], cwd=d, input=diff.stdout,
+                                capture_output=True)
+            if ap.returncode != 0:
+                fail("未コミットの変更を写しへ当てられない: " + ap.stderr.decode(errors="replace").strip()[:200])
+        others = git("ls-files", "--others", "--exclude-standard", "-z")
+        for rel in filter(None, others.stdout.decode().split("\0")):
+            src, dst = REPO / rel, d / rel
+            if src.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+    top = git("rev-parse", "--show-toplevel", cwd=d, text=True).stdout.strip()
+    if not top or Path(top).resolve() == REPO.resolve():
+        fail("写しが共有の作業ツリーと同じ場所を指している")
+    print(f"写しを作りました（{'コミット済みの版' if a.head else '未コミットの変更ごと'}）。使い終えたら "
+          f"`loopctl.py scratch --remove {d}`", file=sys.stderr)
+    print(d)
 
 
 def set_active(flag: bool, msg: str, finished: bool = False):
@@ -1621,6 +1723,9 @@ def main(argv=None):
     sub.add_parser("pause", help="Stopフックの催促を止める（人が付き添う時）")
     rs = sub.add_parser("resume", help="催促を再開する（止まっていた実行も）"); rs.add_argument("--extend", type=int, default=0, help="時間の予算をこの秒数だけ延ばす")
     sub.add_parser("finish", help="実行を閉じる")
+    sc = sub.add_parser("scratch", help="壊して試す・比べるための写しを作業ツリーの外に作り、パスを出す")
+    sc.add_argument("--head", action="store_true", help="未コミットの変更を写さず、コミット済みの版だけ")
+    sc.add_argument("--remove", metavar="PATH", help="scratch で作った写しを消す")
     rr = sub.add_parser("retro", help="振り返りの数字（candidates.md の振り返り節へ貼る）"); rr.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     try:
@@ -1629,7 +1734,7 @@ def main(argv=None):
             "review": cmd_review, "gate": cmd_gate, "judge": cmd_judge, "decide": cmd_decide, "override": cmd_override,
             "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire,
             "gate-stats": cmd_gate_stats, "accept-self": cmd_accept_self, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
-            "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer, "retro": cmd_retro,
+            "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer, "retro": cmd_retro, "scratch": cmd_scratch,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
             "resume": cmd_resume,
             "finish": lambda a: set_active(False, "実行を閉じました", finished=True),

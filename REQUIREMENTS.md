@@ -35,10 +35,11 @@
 ## やること / バックログ
 - 既存PJを、開いた時に`/migrate-rules`で記録ルールの改訂に揃える（checkpointの移動・`REQUIREMENTS.md`の新設・ADR節の振り分け・`NOTES.md`の整理）。checkpointを移すかはPJごとにユーザーが決める（2026-09-14時点で未移行は17PJ。kakeiboとdiscは移行済み）。
 - 他PCへグローバル廃止を反映する：手順はREADME「2026-09-26の移行（他のPC）」（そのPCのClaudeに読ませる）。あわせて、2026-09-17より前のcloneは取り直し（消す前に`IMPROVEMENTS.md`の未pushの追記を確認）、quorumも`git pull && ./install.sh`、`settings.json`の分類フック登録が残っていれば手で外す。**全PCで済んだら、`rules/common-rules.md`冒頭の「以前の共通ルールのブロックが残っていたら…消す」の1行を消して全PJへ反映する**（移行の間だけ要る1行。2026-09-30の見直しの指摘）。
+- 個人の開発PJ（mtg-practice）のループの実行を閉じたら、`candidates.md`の「ループの仕組みの課題」の2026-09-27〜30の7件に移した印を付け、`loop-scaffold.py --update`で2026-09-30の版へ上げる。
 - ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
 
 ## 未決事項
-- [ ] 個人の開発PJのループで出たひな型の課題7件（`IMPROVEMENTS.md` 2026-09-30）を、提案した案で反映するか（写しを作るコマンドを`loopctl.py`に足す・レビュー役は直すべき点があれば不合格・commitの工程のcheckpointの分け方・振り返りの時間から人待ちを除く）。反映したら、そのPJの`candidates.md`へ移した印を付ける（実行が開いている間は付けない）
+- [ ] 同じ日の同じ作業で中身が違う時、共通ルール§2で別のcheckpointファイルを許すか（今は1日1作業1ファイルで、ひな型には見出しで分ける形を書いた。個人の開発PJのループで、同じファイルに別の中身が入り引きにくかった件。2026-09-30）
 - [ ] 常時トリアージ規則を廃止した今、`hooks/triage-classifier.sh`・`hooks/triage-rubric.txt`・`skills/codex-triage/`（opt-inの分類ツール）を配布し続けるか。
 - [ ] `migrate-rules`もCodexへ配るか（`init-rules`と同じく1枚のまま両方へコピーできる。中にClaude専用の手順が無いかを見てから）。
 - [ ] `install.sh`のCodexへのskills配り先を`~/.codex/skills/`から`~/.agents/skills/`へ移すか。手元のCodex 0.153.4は両方の文字列を持ち現状は生きているが、公式が挙げるのは`.agents`側だけ。
