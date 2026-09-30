@@ -113,7 +113,7 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 
 正本の編集はこのPCだけで行い、他のPCは受け取る側に回る（「ルールを変更するとき」）。受け取る側の手順は次の4つ。**1〜2はいつでも、3は該当する時だけ、4はループのひな型を入れたリポがある時だけ**。
 
-1. **取り込む**: `cd <claude-rulesのclone> && git pull --ff-only && ./install.sh`。`install.sh`は`~/.claude/settings.json`へ関門のフックと表示の設定を**無いものだけ**足す（告知が出る）。終わったら**Claude Codeを起動し直す**（設定と常時読み込みのルールは起動時に読まれる）
+1. **取り込む**: `cd <claude-rulesのclone> && git pull --ff-only && ./install.sh`。`install.sh`は`~/.claude/settings.json`へ関門のフックと表示の設定を**無いものだけ**足す（告知が出る）。終わったら**Claude Codeを起動し直す**（設定と常時読み込みのルールは起動時に読まれる）。続けて**そのPCにしか無いPJを書き込み直す**：`python3 <clone>/tools/embed-rules.py --scan <PJを並べた場所>`で「古い」と出たPJを`python3 <clone>/tools/embed-rules.py <PJ>`で書き込み直し、そのPJの規約（worktree・ブランチ）でcommitする。正本のPCでの「全PJへ反映」は正本のPCにあるPJにしか届かず、他PCでだけ作業するPJは古い版のまま残る
 2. **確かめる**: `jq '{viewMode, showThinkingSummaries}' ~/.claude/settings.json`で表示の設定、`tools/check-record-guard.sh --repo <作業するリポ>`で関門（出たコマンドを**単独の呼び出しで**打つ）
 3. **pullが止まった時**: そのPCで`IMPROVEMENTS.md`に書き足してpushしていない分があると、pullが衝突する。**正本側に同じ内容が転記済みか**を`git diff origin/main -- IMPROVEMENTS.md`で見て、転記済みなら手元の分を捨てる（`git checkout -- IMPROVEMENTS.md`）。まだ無い分だけ残してcommitし、pullし直す
 4. **ループのひな型を入れたリポを上げる**（リポごと）:

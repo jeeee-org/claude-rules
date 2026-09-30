@@ -38,6 +38,7 @@
 - ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
 
 ## 未決事項
+- [ ] 個人の開発PJのループで出たひな型の課題7件（`IMPROVEMENTS.md` 2026-09-30）を、提案した案で反映するか（写しを作るコマンドを`loopctl.py`に足す・レビュー役は直すべき点があれば不合格・commitの工程のcheckpointの分け方・振り返りの時間から人待ちを除く）。反映したら、そのPJの`candidates.md`へ移した印を付ける（実行が開いている間は付けない）
 - [ ] 常時トリアージ規則を廃止した今、`hooks/triage-classifier.sh`・`hooks/triage-rubric.txt`・`skills/codex-triage/`（opt-inの分類ツール）を配布し続けるか。
 - [ ] `migrate-rules`もCodexへ配るか（`init-rules`と同じく1枚のまま両方へコピーできる。中にClaude専用の手順が無いかを見てから）。
 - [ ] `install.sh`のCodexへのskills配り先を`~/.codex/skills/`から`~/.agents/skills/`へ移すか。手元のCodex 0.153.4は両方の文字列を持ち現状は生きているが、公式が挙げるのは`.agents`側だけ。
