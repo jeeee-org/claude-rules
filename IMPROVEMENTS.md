@@ -89,3 +89,13 @@
 - [rules/common-rules.md §3] 「その場で終わる用事には立てない。」／どこまでが「その場」か読み手に委ねている／「1回の応答で終わる用事（一行の修正・問いへの答え・調べ物）」と例を添える（仮説）
 - [templates/loopの統括役] 「工程が1つ進むたびに`loopctl.py status`の表をそのまま貼る」／長い実行でトークンを食うかもしれない／実行1回分の記録で割合を見てから判断（仮説）
 - **反映（2026-09-30）**: 確定のうち§5.2・読み直し（ひな形とこのリポの`AGENTS.md`も）・§9の重複の3件。pushの関門の文面も「全リポ」に揃え、使わなくなった`START_SCOPE`を`tools/build-rules.py`から消した。冒頭の移行の1行は他PCの移行の後、`permissions.deny`とサブエージェントの確かめは別の束で。⇒ [反映済み → rules/common-rules.md・skills/init-rules/SKILL.md・hooks/push-attribution-guard.sh・tools/build-rules.py]
+
+## 2026-09-30 — 指示の見直し（Opus 5.5への更新・閲覧専用のPC）
+- [tools/check-limits.shのグローバルの判定] グローバルの判定が`~/.claude/CLAUDE.md`を測る／2026-09-26に共通ルールをグローバルから外したので、いま常時読み込みに載るのは`~/.claude/rules/*.md`（paths指定なし）とPJの`.claude/rules/*.md`で、測る対象がずれている（別リポが`~/.claude/rules/`に置いた約11KBが「0B」と出た）／グローバルの判定を`~/.claude/rules/*.md`に替え、PJの判定に`.claude/rules/*.md`を足す（確定）
+- [事実・2026-09-30に実験で確認] Claude Codeは起動した場所より上のディレクトリの`AGENTS.md`も読み込む。上位に`CLAUDE.md`があると、下の`AGENTS.md`（PJのものも）が読まれなくなる
+- [rules/common-rules.md冒頭] 「PJに`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを読まなくなる）。」／上位ディレクトリの`CLAUDE.md`でも同じことが起きるのに、PJの中しか言っていない／「PJにも、その上位のディレクトリにも`CLAUDE.md`を作らない（あるとClaude Codeがこのファイルを読まなくなる）。」に書き換える（確定・約+70B）
+- [skills/audit-prompts/SKILL.md 0.準備の見る範囲] 「このPC」の行に`~/.claude/rules/`が無く、「このPJ」の行に`.claude/rules/`が無い／どちらも常時読み込みに載る／両方を見る範囲に足す（確定）
+- [skills/audit-prompts/SKILL.md 5.行き先へ送る・README「モデルが変わった時の見直し」] 「追記したらcloneでその1ファイルだけをcommitしてpushする」「監査する（どのPCでも）」／閲覧専用のPC（ローカルの指示でcloneへの書き込みを禁止）とぶつかり、どちらが勝つか書いていない／「そのPCがcloneへの書き込みを禁じている時は、追記もcommitもせず、追記する本文をコードブロックで出す（利用者が正本のPCへ渡す）」を1行足す（確定）
+- [AGENTS.md「Git運用（共通ルール§5の差分）」] 「AI署名（…）は付けない（既存コミットに合わせる）。」「コミット規約: 日本語subject 1行（50字目安）＋…」「push: 共通ルール§5の既定どおり…」／§5.2が全リポになり、3行とも共通ルールの繰り返しになった（常時読み込み372B）／3行とも消す（確定）
+- [rules/common-rules.md冒頭の移行の1行] 共通ルールのブロックの残りが1,105B／次に1項足すと上限に迫る／他PCの移行が済んだら、予定どおりこの1行を先に消して空きを作る（仮説）
+- [報告・閲覧専用のPC] 最上位の`effortLevel: "high"`が残っていた（Opus 5.5では効かない）ので消した。出力スタイルにあった英数字と日本語の間の空白の決まりは§9と重なるので消した（出力スタイルは配布対象外という決定どおり）
