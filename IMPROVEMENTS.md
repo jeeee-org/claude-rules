@@ -84,6 +84,7 @@
 - [settings/ と §5] 「必ず事前確認：--force / --force-with-leaseのpush、履歴改変」／許可の既定が全許可のPCでは、これを止めるのがモデルの判断だけ（フックにも無い）／`settings/`に`permissions.deny`（`git push --force*`・`git push -f*`・`git reset --hard*`）を置いて配る（確定）
 - [rules/common-rules.md §9] 「着手や完了を伝えるときも同じ。…」／同じ節の1行目と番号・記号の決まりの繰り返し／消す（確定）
 - [各PCの設定] `effortLevel`・Codexの`model_reasoning_effort`が理由の記録なく固定されている／前のモデルの頃の値の持ち越しかもしれない／各PCで監査の時に確かめる（仮説）
+  - **確かめた（2026-09-30）**: Opus 5.5は最上位の`effortLevel`を読まない（`modelSettings`のモデルごとの値だけ。既定は`medium`）。正本のPCの`"high"`は効いていない持ち越しだったので消した。他PCも監査の時に最上位の`effortLevel`を見て、効いていない値は消す。Codexの`max`は対話で使う時だけ効き（quorumは利用者の設定を読まずに呼ぶ）、Opus 5.5の話ではないので各PCの判断。⇒ [反映済み → skills/audit-prompts/SKILL.md・NOTES.md]
 - [rules/common-rules.md全体] サブエージェントも`AGENTS.md`を受け取るなら、カード・完了時の記録・§9の1行をやろうとするおそれ／汎用のサブエージェントに小さな作業を1回頼んで確かめ、当たれば「サブエージェントとして呼ばれた時は呼び手の指示に従う」を1行足す（仮説）
 - [rules/common-rules.md §3] 「その場で終わる用事には立てない。」／どこまでが「その場」か読み手に委ねている／「1回の応答で終わる用事（一行の修正・問いへの答え・調べ物）」と例を添える（仮説）
 - [templates/loopの統括役] 「工程が1つ進むたびに`loopctl.py status`の表をそのまま貼る」／長い実行でトークンを食うかもしれない／実行1回分の記録で割合を見てから判断（仮説）

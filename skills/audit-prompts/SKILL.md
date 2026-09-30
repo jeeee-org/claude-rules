@@ -18,7 +18,7 @@ description: 指示の負債（重複・古いモデル向けの癖・自律性�
 | 行き先 | 見るもの | 直す場所 |
 |---|---|---|
 | 正本（全PC・全PJに効く） | `$clone/rules/common-rules.md`・`$clone/skills/*/SKILL.md`・`$clone/hooks/*`・`$clone/settings/*.json` | このリポ。`IMPROVEMENTS.md`経由で正本のPCが直して配る |
-| このPC | `~/.claude/settings.json`（思考の強さ`effortLevel`・許可・フック）・`~/.claude/CLAUDE.md`・`~/.claude/agents/`・claude-rules以外のスキル。Codexなら`~/.codex/config.toml`・`~/.codex/AGENTS.md` | このPCの設定。全PCで揃えるべきものは正本の`settings/`へ |
+| このPC | `~/.claude/settings.json`（思考の強さ`effortLevel`・モデルごとの`modelSettings`・許可・フック）・`~/.claude/CLAUDE.md`・`~/.claude/agents/`・claude-rules以外のスキル。Codexなら`~/.codex/config.toml`・`~/.codex/AGENTS.md` | このPCの設定。全PCで揃えるべきものは正本の`settings/`へ |
 | このPJ | `AGENTS.md`の**共通ルールのブロックの外**・`.claude/settings.json`・`.claude/skills/`・`.claude/agents/`・ループのひな型を入れていれば`.claude/loop/` | そのPJ（そのPJの規約で） |
 
 - **PJの`AGENTS.md`にある共通ルールのブロックは見ない**。正本からの複製なので、指摘は正本（`rules/common-rules.md`）の行で書く。ブロックと正本の食い違いは`python3 $clone/tools/embed-rules.py --scan <親ディレクトリ>`の「古い」で分かり、負債ではなく反映漏れ。
@@ -43,7 +43,7 @@ description: 指示の負債（重複・古いモデル向けの癖・自律性�
 |---|---|---|
 | 古いモデル向けの思考の指示 | 「よく考えて」「ステップごとに考えて」「think step by step」 | 新しいモデルでは既定で考えるので、トークンを使うだけ |
 | 推論の書き出しを求める指示 | 「理由を先に書いてから答えよ」「思考を出力せよ」 | 応答が長くなるだけで、判断の質は上がらない |
-| 前のモデルから引き継いだ思考の強さ | `effortLevel`・`model_reasoning_effort`・スキルやエージェントの定義にある固定値 | いつ・何のために決めた値かを見る。理由が前のモデルの弱さなら候補 |
+| 前のモデルから引き継いだ思考の強さ | `effortLevel`・`model_reasoning_effort`・スキルやエージェントの定義にある固定値 | いつ・何のために決めた値かを見る。理由が前のモデルの弱さなら候補。**新しいモデルで効いているかも見る**（Opus 5.5は最上位の`effortLevel`を読まず、`modelSettings.<モデルID>.effortLevel`だけを読む） |
 | 権限の曖昧さ | 「必要なら」「適宜」「状況に応じて」で、誰が決めるか書いていない | 止まるべき所で進む／進むべき所で止まる、のどちらかを生む |
 | 早すぎる停止 | 毎段で確認を求める・「一度止まって報告」の多用 | 長い自律の作業が細切れになる |
 | 終わりの条件の欠け | 何をもって完了とするか書いていないスキル・エージェント | 早く止まるか、止まらないか |
