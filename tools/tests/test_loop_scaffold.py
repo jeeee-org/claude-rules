@@ -1099,14 +1099,33 @@ class ScopeGateTest(unittest.TestCase):
         subprocess.run(['git', 'clone', '-q', str(remote), str(other)], check=True)
         for a in (['config', 'user.email', 't@t'], ['config', 'user.name', 't'], ['commit', '-q', '--allow-empty', '-m', 'x'], ['push', '-q']):
             subprocess.run(['git', '-C', str(other), *a], check=True, capture_output=True)
-        env = dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root))
+        env = dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root), PUSH_CHECK_WAIT='0')
         script = '. "$LOOP_DIR/gates/lib.sh"; need_pushed; gate_end'
         p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 0, p.stdout)
         self.git('commit', '-q', '--allow-empty', '-m', 'まだpushしていない')
         p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 1)
-        self.assertIn('push されていない', p.stdout)
+        self.assertIn('push されていない（3回見た）', p.stdout)
+
+    def test_push済みは成果物のコミットで見て別セッションの未pushのcommitに引きずられない(self):
+        (self.root / 'rec.md').write_text('記録\n')
+        self.git('add', '-A'); self.git('commit', '-qm', 'この工程の記録')
+        remote = Path(self._tmp.name + '-remote2.git')
+        self.addCleanup(shutil.rmtree, remote, True)
+        subprocess.run(['git', 'init', '-q', '--bare', str(remote)], check=True)
+        self.git('remote', 'add', 'origin', str(remote))
+        self.git('push', '-q', '-u', 'origin', 'HEAD')
+        self.git('commit', '-q', '--allow-empty', '-m', '別のセッションのcommit（まだpushしていない）')
+        env = dict(self.env, LOOP_STEP='commit', REPO_ROOT=str(self.root), LOOP_OUTPUTS='rec.md', PUSH_CHECK_WAIT='0')
+        script = '. "$LOOP_DIR/gates/lib.sh"; need_pushed; gate_end'
+        p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertIn('成果物を最後に変えたコミット', p.stdout)
+        (self.root / 'rec.md').write_text('記録を足した\n')
+        self.git('commit', '-qam', 'この工程の記録の続き（まだpushしていない）')
+        p = subprocess.run(['bash', '-c', script], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 1, p.stdout)
 
 
 class SharedTreeGuardTest(unittest.TestCase):
@@ -1450,6 +1469,30 @@ class LimitAndRetroTest(PerItemTest):
         x = json.loads(self.ctl('retro', '--json').stdout)['items'][0]
         self.assertEqual((x['elapsed_main'], x['elapsed']), (200, 4900))
         self.assertIn('本線200s・人待ちを含む全体4900s', self.ctl('retro').stdout)
+
+    def check(self):
+        return subprocess.run([sys.executable, str(self.loop / 'bin/loopctl.py'), 'status', '--check'],
+                              capture_output=True, text=True, env=self.env, cwd=self.root)
+
+    def test_status_checkは統括役が終えた時点の具合を終了コードで返す(self):
+        self.assertEqual(self.check().returncode, 2)  # 実行が無い
+        self.ctl('begin', '--items', 'q1')
+        p = self.check()
+        self.assertEqual(p.returncode, 3, p.stdout)
+        self.assertIn('未完了の工程が残ったまま', p.stdout)
+        self.ctl('halt', '依頼文とitems.txtが食い違う')
+        p = self.check()
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('依頼文とitems.txtが食い違う', p.stdout)
+        self.assertIn('依頼文とitems.txtが食い違う', self.ctl('status').stdout)
+        self.ctl('resume')
+        self.ctl('block', 'triage', '外部待ち')
+        self.assertEqual(self.check().returncode, 1)
+        st = self.state()
+        for v in st['steps'].values():
+            v['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st))
+        self.assertEqual(self.check().returncode, 0)
 
     def test_止まっていた区間を控え振り返りの経過から除く(self):
         self.ctl('begin', '--items', 'q1')

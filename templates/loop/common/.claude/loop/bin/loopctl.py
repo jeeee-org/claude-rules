@@ -589,8 +589,41 @@ def cmd_show(a):
     print(json.dumps(step_def(pipeline(), a.step), ensure_ascii=False, indent=2))
 
 
+def ready_steps(st: dict, p: dict) -> list[dict]:
+    ready = []
+    for sd in p["steps"]:
+        s = st["steps"].get(sd["id"])
+        if not s or s["status"] in ("done", "blocked"):
+            continue
+        if all(st["steps"].get(d, {"status": "done"})["status"] == "done" for d in after_of(p, sd["id"])):
+            ready.append({"id": sd["id"], "status": s["status"], "worker": sd.get("worker"),
+                          "reviewer": sd.get("reviewer"), "parallel": sd.get("parallel", 1)})
+    return ready
+
+
+def check_run(st: dict, p: dict) -> tuple[int, str]:
+    """呼び出し元（非対話の起動など）が、統括役が終えた時点の実行の具合を終了コードで知るため。
+
+    0 = 全工程が完了 / 1 = 止められている・止まっている工程がある（人待ちを含む） / 3 = 未完了の工程が残ったまま終わった。
+    非対話の統括役が人の確認待ちにして exit 0 で終わり、呼び出し元が気づかず次へ進んだ（IMPROVEMENTS 2026-09-30）。
+    """
+    if all(s["status"] == "done" for s in st["steps"].values()):
+        return 0, "全工程が完了"
+    if st.get("halted"):
+        return 1, f"止められている: {st['halted']}"
+    if any(s["status"] == "blocked" for s in st["steps"].values()):
+        return 1, "止まっている工程がある: " + "、".join(blocked_items(st))
+    if not ready_steps(st, p):
+        return 1, "着手できる工程が1つも無い（前提の工程が止まっているか、状態が食い違っている）"
+    return 3, "未完了の工程が残ったまま（統括役が途中で終わった）: " + "、".join(open_items(st, p))
+
+
 def cmd_status(a):
     st, p = state(), pipeline()
+    if a.check:
+        code, why = check_run(st, p)
+        print(f"{'OK' if code == 0 else 'NG'}: {why}")
+        sys.exit(code)
     if a.json:
         print(json.dumps({"state": st, "open": open_items(st, p), "blocked": blocked_items(st)}, ensure_ascii=False, indent=2))
     else:
@@ -600,15 +633,7 @@ def cmd_status(a):
 def cmd_next(a):
     """いま着手できる工程（前提が済み・未着手か作業中）を出す。統括役はこれで次の一手を決める。"""
     st, p = state(), pipeline()
-    ready = []
-    for sd in p["steps"]:
-        s = st["steps"].get(sd["id"])
-        if not s or s["status"] in ("done", "blocked"):
-            continue
-        if all(st["steps"].get(d, {"status": "done"})["status"] == "done" for d in after_of(p, sd["id"])):
-            ready.append({"id": sd["id"], "status": s["status"], "worker": sd.get("worker"),
-                          "reviewer": sd.get("reviewer"), "parallel": sd.get("parallel", 1)})
-    print(json.dumps(ready, ensure_ascii=False, indent=2))
+    print(json.dumps(ready_steps(st, p), ensure_ascii=False, indent=2))
 
 
 def cmd_start(a):
@@ -1661,6 +1686,15 @@ def cmd_scratch(a):
     print(d)
 
 
+def cmd_halt(a):
+    """実行を理由付きで止める。人に聞けない時（非対話の起動・依頼文と設定の食い違い）に、聞く代わりに使う。"""
+    with locked():
+        st = state()
+        halt(st, f"統括役が止めた: {a.reason}")
+        save_json(STATE, st)
+    print(f"実行を止めました: {a.reason}（`status --check`は非0。直したら `resume`）")
+
+
 def set_active(flag: bool, msg: str, finished: bool = False):
     with locked():
         st = state()
@@ -1690,6 +1724,8 @@ def main(argv=None):
     sh = sub.add_parser("show", help="工程の定義を出す（項目ごとの工程は展開後）"); sh.add_argument("step")
     b.add_argument("--force", action="store_true")
     s = sub.add_parser("status"); s.add_argument("--json", action="store_true")
+    s.add_argument("--check", action="store_true", help="終了コードで具合を返す（0=全完了・1=止まっている・3=未完了のまま）")
+    ha = sub.add_parser("halt", help="実行を理由付きで止める（人に聞けない時）"); ha.add_argument("reason")
     sub.add_parser("next", help="いま着手できる工程")
     for name in ("start", "submit"):
         x = sub.add_parser(name); x.add_argument("step"); x.add_argument("--shard", default="main")
@@ -1734,7 +1770,7 @@ def main(argv=None):
             "review": cmd_review, "gate": cmd_gate, "judge": cmd_judge, "decide": cmd_decide, "override": cmd_override,
             "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire,
             "gate-stats": cmd_gate_stats, "accept-self": cmd_accept_self, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
-            "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer, "retro": cmd_retro, "scratch": cmd_scratch,
+            "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer, "retro": cmd_retro, "scratch": cmd_scratch, "halt": cmd_halt,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
             "resume": cmd_resume,
             "finish": lambda a: set_active(False, "実行を閉じました", finished=True),

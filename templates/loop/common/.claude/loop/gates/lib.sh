@@ -162,12 +162,27 @@ need_clean_tree() {
 # HEAD がリモートの追跡ブランチに含まれる（push 済み）。上流が無ければ不合格。
 # 「HEAD＝上流」でなく「上流に含まれる」で見る（複数人が同じブランチへ自動でpushするPJで、
 # ほかのメンバーが後からpushしただけで不合格になったため）
+# この工程のコミットが上流に含まれるか。見るのは「この工程の成果物（outputs）を最後に変えたコミット」で、
+# 成果物が無い・まだコミットされていない時だけ HEAD。HEAD だけで見ると、同じ clone で別のセッションが
+# commit して push する前の瞬間に当たり、push 済みの工程が差し戻された（業務のテストPJ。IMPROVEMENTS 2026-09-30）。
+# 含まれない時は PUSH_CHECK_WAIT 秒（既定5）おいて取り直し、PUSH_CHECK_TRIES 回（既定3）見てから不合格にする
 need_pushed() {
   check_key "need_pushed"
+  local tries="${PUSH_CHECK_TRIES:-3}" wait="${PUSH_CHECK_WAIT:-5}" up target="" label="HEAD" i outs=()
   git fetch -q 2>/dev/null
-  local up; up=$(git rev-parse '@{u}' 2>/dev/null)
+  up=$(git rev-parse '@{u}' 2>/dev/null)
   if [ -z "$up" ]; then ng "上流のブランチが無い（git push -u で設定する）"; return; fi
-  if git merge-base --is-ancestor HEAD "$up"; then ok "HEAD は push 済み（上流に含まれる）"; else ng "HEAD が上流へ push されていない"; fi
+  mapfile -t outs < <(step_outputs 2>/dev/null | grep -v '^$')
+  if [ "${#outs[@]}" -gt 0 ]; then
+    target=$(git log -1 --format=%H -- "${outs[@]}" 2>/dev/null)
+    [ -n "$target" ] && label="成果物を最後に変えたコミット ${target:0:8}"
+  fi
+  [ -n "$target" ] || target=HEAD
+  for ((i = 1; i <= tries; i++)); do
+    if git merge-base --is-ancestor "$target" "$up"; then ok "$label は push 済み（上流に含まれる）"; return; fi
+    [ "$i" -lt "$tries" ] && { sleep "$wait"; git fetch -q 2>/dev/null; up=$(git rev-parse '@{u}' 2>/dev/null); }
+  done
+  ng "$label が上流へ push されていない（${tries}回見た）"
 }
 
 # コマンドを回して終了コードで判定する。コマンドが未設定なら不合格（黙って通さない）

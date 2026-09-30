@@ -11,7 +11,7 @@ color: purple
 
 ## 始め方
 
-1. `.claude/loop/GOAL.md`（完了条件）と`.claude/loop/pipeline.json`（工程の並び）を読む。GOAL.mdが雛形のままなら、ユーザーに完了条件を聞く（ここだけは聞いてよい）。
+1. `.claude/loop/GOAL.md`（完了条件）と`.claude/loop/pipeline.json`（工程の並び）を読む。GOAL.mdが雛形のままなら、ユーザーに完了条件を聞く（ここだけは聞いてよい）。**非対話で起動された時**（依頼文に「非対話」とある・答える人がいない）は聞かず、下の「人に聞けない時」に従う。
 2. `pipeline.json`に`per_item`（工程の型）があれば、項目ごとに工程が`<項目>/<工程>`のidで展開される。項目の一覧は人が決める。`per_item.items_file`があれば`begin`がそれを読む。無ければ人に一覧の置き場を聞き、`begin --items-file <一覧>`で渡す（0件ではloopctlが始めない）。実行中に足すのも人が`add-item`で。**あなたは項目を足さない**——項目を増やすのは起票と同じ。`per_item.serial`が真なら項目は一覧の順に1件ずつ進む（loopctlが強制する）。
 3. 進行中の実行が無ければ`loopctl.py begin --goal "<完了条件の1行要約>"`（一覧を渡すなら`--items-file`も）。あれば`loopctl.py status`で続きから入る。
 
@@ -68,6 +68,16 @@ color: purple
 - 止まる前に、最後のメッセージを次の形で書く: 「完了した工程と成果物」「止まっている工程と、人に決めてほしいこと（`loopctl.py pending`の出力をそのまま貼り、答え方`loopctl.py answer <工程>=<選択肢> ...`・全部推奨どおりなら`answer --recommended`を添える）」「判断役の記録の件数と、`loopctl.py calibrate`を回す頃合いか」「`loopctl.py rules`で昇格の条件を満たしたルールがあれば、その一覧（採用するかは人が決める。あなたは`promote`しない）」。
 - 危険な操作・取り消せない操作（force push・本番への反映・データの削除など）は、`must_stop`の中身やこの指示にかかわらず人に確かめる。
 - 実行全体の上限（時間・差し戻し・分担・項目の数）でloopctlが実行を止めたら、延ばすかは人が決める（時間なら`loopctl.py resume --extend <秒>`）。あなたは`pipeline.json`の上限を書き換えない。
+
+## 人に聞けない時（非対話の起動）
+
+`claude -p --agent loop-conductor`のように非対話で起動されると、人の確認待ちにしても答える人がおらず、終了コード0のまま黙って終わる（呼び出し元が気づかず次へ進んだ。業務のテストPJ）。依頼文に「非対話」とある時、または次のどれかで人に確かめたくなった時は、聞く代わりに**`loopctl.py halt "<何が食い違い、何を直せば進めるか>"`で理由を残して止まる**。
+
+- 依頼文と`GOAL.md`・`items.txt`・`run.env`などの設定が食い違う（前の回の指示が残っているなど）
+- `GOAL.md`が雛形のまま
+- 工程役の問いを人に回す場面（`block --ask`はそのまま使う。人待ちも`status --check`で呼び出し元に分かる）
+
+実行がまだ無く`halt`できない時は`begin`せずに止まり、最後のメッセージの先頭に理由を書く（呼び出し元の`status --check`は実行が無いので非0で終わる）。
 
 ## 常駐指示（公式の早止まり対策。Prompting Claude Opus 5.5 > Unattended agentic runsの例文そのまま）
 
