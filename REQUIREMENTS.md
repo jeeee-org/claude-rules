@@ -35,7 +35,6 @@
 ## やること / バックログ
 - 既存PJを、開いた時に`/migrate-rules`で記録ルールの改訂に揃える（checkpointの移動・`REQUIREMENTS.md`の新設・ADR節の振り分け・`NOTES.md`の整理）。checkpointを移すかはPJごとにユーザーが決める（2026-09-14時点で未移行は17PJ。kakeiboとdiscは移行済み）。
 - 他PCへグローバル廃止を反映する：手順はREADME「2026-09-26の移行（他のPC）」（そのPCのClaudeに読ませる）。あわせて、2026-09-17より前のcloneは取り直し（消す前に`IMPROVEMENTS.md`の未pushの追記を確認）、quorumも`git pull && ./install.sh`、`settings.json`の分類フック登録が残っていれば手で外す。**全PCで済んだら、`rules/common-rules.md`冒頭の「以前の共通ルールのブロックが残っていたら…消す」の1行を消して全PJへ反映する**（移行の間だけ要る1行。2026-09-30の見直しの指摘）。
-- 個人の開発PJ（mtg-practice）のループの実行を閉じたら、`candidates.md`の「ループの仕組みの課題」の2026-09-27〜30の7件に移した印を付け、`loop-scaffold.py --update`で2026-09-30の版へ上げる。
 - ループのひな型（`templates/loop/`）を実PJへ`tools/loop-scaffold.py`で入れて1周回し、ズレを`IMPROVEMENTS.md`へ。SubagentStopフックの実物での発火は未確認。
 
 ## 未決事項
