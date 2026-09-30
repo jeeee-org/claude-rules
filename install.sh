@@ -140,11 +140,16 @@ cp -R "$SRC_DIR/skills/migrate-rules" "$CLAUDE_CONFIG_DIR/skills/migrate-rules"
 # cloneしただけのPCでも使えるよう、リポの .claude/skills と .agents/skills からも symlink で見せている
 rm -rf "$CLAUDE_CONFIG_DIR/skills/install-rules"
 cp -R "$SRC_DIR/skills/install-rules" "$CLAUDE_CONFIG_DIR/skills/install-rules"
+# audit-promptsスキル（指示の負債の監査。正本への指摘はIMPROVEMENTS.mdへ送る）
+rm -rf "$CLAUDE_CONFIG_DIR/skills/audit-prompts"
+cp -R "$SRC_DIR/skills/audit-prompts" "$CLAUDE_CONFIG_DIR/skills/audit-prompts"
 
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/skills"
   rm -rf "$CODEX_HOME/skills/install-rules"
   cp -R "$SRC_DIR/skills/install-rules" "$CODEX_HOME/skills/install-rules"
+  rm -rf "$CODEX_HOME/skills/audit-prompts"
+  cp -R "$SRC_DIR/skills/audit-prompts" "$CODEX_HOME/skills/audit-prompts"
   rm -rf "$CODEX_HOME/skills/init-rules"
   cp -R "$SRC_DIR/skills/init-rules" "$CODEX_HOME/skills/init-rules"   # Claudeと同じ1枚（2026-09-26に一本化）
   ln -sfn "$IMPROVEMENTS_FILE" "$CODEX_HOME/skills/init-rules/IMPROVEMENTS.md"
@@ -355,7 +360,7 @@ remove_global_block "$CODEX_TARGET_MD" codex-rules
 if [ "$INSTALL_CODEX" != 1 ]; then
   # 既存の配置は**自動で消さない**（env 1つでユーザーのファイルを削るのは危険）。
   # 残っていることと、消す手順だけを知らせる。
-  for leftover in "$CODEX_HOME/skills/init-rules" "$CODEX_HOME/skills/triage" \
+  for leftover in "$CODEX_HOME/skills/init-rules" "$CODEX_HOME/skills/triage" "$CODEX_HOME/skills/audit-prompts" \
                   "$CODEX_HOME/hooks/codex-triage" "$CODEX_HOME/tools/check-limits.sh"; do
     if [ -e "$leftover" ]; then
       echo "※ Codex版はスキップしました。前回の配置が残っています: $leftover" >&2
@@ -373,6 +378,7 @@ echo "  - skills/init-rules"
 echo "  - skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
 echo "  - skills/migrate-rules（既存PJを記録ルールの改訂へ揃える）"
 echo "  - skills/install-rules（共通ルールの導入・更新・PJへの書き込みを案内する）"
+echo "  - skills/audit-prompts（指示の負債の監査）"
 echo "  - hooks/triage-classifier.sh（コピーのみ。有効化は下記 opt-in）"
 if [ "$GUARD_REGISTERED" = 0 ]; then
   echo "  - hooks/commit-record-guard.sh・commit-record-audit.sh・push-attribution-guard.sh・secret-read-guard.py（コピーのみ。登録は上記の案内を参照）"
@@ -389,6 +395,7 @@ if [ "$INSTALL_CODEX" = 1 ]; then
   echo "  - $CODEX_HOME/skills/init-rules"
   echo "  - $CODEX_HOME/skills/init-rules/IMPROVEMENTS.md -> $IMPROVEMENTS_FILE (symlink)"
   echo "  - $CODEX_HOME/skills/install-rules"
+  echo "  - $CODEX_HOME/skills/audit-prompts"
   echo "  - $CODEX_HOME/skills/triage（自然言語での明示トリアージ）"
   echo "  - $CODEX_HOME/hooks/codex-triage（初回プロンプト分類ラッパー）"
 else

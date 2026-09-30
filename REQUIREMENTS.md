@@ -2,7 +2,7 @@
 
 > 決めたこと（要求・方針・作業・予定）とスコープ、未決事項。**進み具合はPROGRESS.md**（計画の本体を二重に持たない）。決まった／変わったら即更新し、**片付いたら消す**（経緯はcheckpoints/に残る）。
 
-最終更新: 2026-09-26
+最終更新: 2026-09-30
 
 ## 目的・スコープ
 - Claude Code / Codexの共通ルール（正本`rules/common-rules.md`）を各PJの`AGENTS.md`へ書き込む道具と、スキル（`init-rules`等）・フックを`install.sh`で複数PCへ配る。
@@ -13,6 +13,7 @@
 - 表示の設定は`settings/display.json`を正本に`install.sh`で全PCへ配る。**to-doツール（`CLAUDE_CODE_ENABLE_TODO_TOOLS`）は全体に入れず、要るリポの`.claude/settings.json`で有効にする**（2026-09-25決定）。
 - 出力スタイル（`~/.claude/output-styles/`）は配布対象外。文章の決まりは`rules/common-rules.md`の§8・§9へ一本化する。
 - **共通ルールはグローバルに入れず、各PJの`AGENTS.md`へ書き込む**（重複は許し、正本からの生成で追従させる。PJ単体で配ることが増えたため）。PJのルールファイルは`AGENTS.md`に統一し`CLAUDE.md`は置かない。業務・共有リポにも書き込んでコミットする（2026-09-26決定）。
+- モデルの更新時などの指示の見直しは`audit-prompts`スキルで監査し、どのPCでも回せる。正本への直しは`IMPROVEMENTS.md`経由で正本のPCが行う（他PCで正本を直さない決まりは変えない。2026-09-30決定）。
 - PJへ書き込む版では、個人の運用（自動commit・自動push・worktree必須・ツール名を書かない決まり）をPJごとに入れる時に選ぶ。コミットの書き方・memory不使用・AI署名なし・§8・§9は全版で必須。導入はAIが選択肢を案内する（2026-09-26決定）。
 
 ## 進行中の作業
