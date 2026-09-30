@@ -66,7 +66,7 @@ class VariantTest(unittest.TestCase):
         self.assertIn('`.agents/skills/<name>/SKILL.md`', x)
         self.assertNotIn('ファイルベースmemory', x)
         both = br.render('embed-both')
-        self.assertIn('PJに`CLAUDE.md`を作らない', both)
+        self.assertIn('その上位のディレクトリにも`CLAUDE.md`を作らない', both)
         self.assertIn('Codexの個人メモリ', both)
         self.assertIn('ファイルベースmemory', both)
 

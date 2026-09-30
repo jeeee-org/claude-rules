@@ -18,8 +18,8 @@ description: 指示の負債（重複・古いモデル向けの癖・自律性�
 | 行き先 | 見るもの | 直す場所 |
 |---|---|---|
 | 正本（全PC・全PJに効く） | `$clone/rules/common-rules.md`・`$clone/skills/*/SKILL.md`・`$clone/hooks/*`・`$clone/settings/*.json` | このリポ。`IMPROVEMENTS.md`経由で正本のPCが直して配る |
-| このPC | `~/.claude/settings.json`（思考の強さ`effortLevel`・モデルごとの`modelSettings`・許可・フック）・`~/.claude/CLAUDE.md`・`~/.claude/agents/`・claude-rules以外のスキル。Codexなら`~/.codex/config.toml`・`~/.codex/AGENTS.md` | このPCの設定。全PCで揃えるべきものは正本の`settings/`へ |
-| このPJ | `AGENTS.md`の**共通ルールのブロックの外**・`.claude/settings.json`・`.claude/skills/`・`.claude/agents/`・ループのひな型を入れていれば`.claude/loop/` | そのPJ（そのPJの規約で） |
+| このPC | `~/.claude/settings.json`（思考の強さ`effortLevel`・モデルごとの`modelSettings`・許可・フック）・`~/.claude/CLAUDE.md`・`~/.claude/rules/`（`paths:`の無いものは常に読み込まれる）・`~/.claude/agents/`・claude-rules以外のスキル。Codexなら`~/.codex/config.toml`・`~/.codex/AGENTS.md` | このPCの設定。全PCで揃えるべきものは正本の`settings/`へ |
+| このPJ | `AGENTS.md`の**共通ルールのブロックの外**・`.claude/rules/`・上位のディレクトリの`AGENTS.md`・`CLAUDE.md`（起動した場所より上も読み込まれ、上位に`CLAUDE.md`があると`AGENTS.md`が読まれなくなる）・`.claude/settings.json`・`.claude/skills/`・`.claude/agents/`・ループのひな型を入れていれば`.claude/loop/` | そのPJ（そのPJの規約で） |
 
 - **PJの`AGENTS.md`にある共通ルールのブロックは見ない**。正本からの複製なので、指摘は正本（`rules/common-rules.md`）の行で書く。ブロックと正本の食い違いは`python3 $clone/tools/embed-rules.py --scan <親ディレクトリ>`の「古い」で分かり、負債ではなく反映漏れ。
 - 他のリポが配るもの（quorum等）の指摘は、そのリポの改善メモへ回す。
@@ -85,7 +85,7 @@ description: 指示の負債（重複・古いモデル向けの癖・自律性�
   - [<正本のパスと見出し>] 「<消すか書き換える行の引用>」／<理由1文>／<書き換え案>（確定|仮説）
   ```
 
-  追記したらcloneでその1ファイルだけをcommitしてpushする（正本は直さない。直すのは正本のPC。README「ルールを変更するとき」）。
+  追記したらcloneでその1ファイルだけをcommitしてpushする（正本は直さない。直すのは正本のPC。README「ルールを変更するとき」）。**そのPCがcloneへの書き込みを禁じている時**（閲覧専用のPC）は、追記もcommitもせず、追記する本文をコードブロックで出す（利用者が正本のPCへ渡す）。
 - **このPC行き** → 直し方（`settings.json`の差分など）を示し、当てるかは利用者が決める。**全PCで揃えるべき値**（思考の強さの既定など）なら、正本の`settings/`へ入れる案として正本行きにも1件足す。
 - **このPJ行き** → そのPJの`REQUIREMENTS.md`にカードを立てるかを聞く。直しはそのPJの規約で行う。
 

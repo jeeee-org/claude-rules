@@ -15,6 +15,7 @@
 3. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ）
 
 ## 完了
+- [x] 2026-09-30 閲覧専用のPCの指示の見直しの4件を反映（上限の判定を`rules/`へ・上位の`CLAUDE.md`も禁じる・監査の見る範囲と閲覧専用のPC・このリポの`AGENTS.md`の重複3行）→ [checkpoint](checkpoints/2026-09-30-指示の見直し-監査のスキルと配る流れ.md)
 - [x] 2026-09-30 初回の指示の見直しを回し、全指摘を`IMPROVEMENTS.md`へ。最小の束（AI署名の禁止を全リポに・`AGENTS.md`の読み直しをやめる・§9の重複）を全23PJへ反映、このPCの効いていない思考の強さの設定を消した → [checkpoint](checkpoints/2026-09-30-指示の見直し-監査のスキルと配る流れ.md)
 - [x] 2026-09-30 指示の負債を監査する`audit-prompts`スキルを足し、どのPCでも監査→`IMPROVEMENTS.md`→正本のPCで反映→配る流れをREADMEに書いた → [checkpoint](checkpoints/2026-09-30-指示の見直し-監査のスキルと配る流れ.md)
 - [x] 2026-09-29 枝の工程の知らせの誤判定2件（業務のテストPJ）を直した。終端を並び順でなく集約との前後で見る・直列の項目で順番のためだけに足した前提を数えない → [checkpoint](checkpoints/2026-09-29-問いごとのループの続きの10件-複数の問いと資格情報の関門.md)
@@ -33,10 +34,6 @@
 - [x] 2026-09-26 `fix-spacing.py`が共通ルールのブロックの中まで直した件（別PCの改善メモ）を反映。ブロックを常に飛ばし、`embed-rules.py`は詰められたマーカー行でも選択を読む → [checkpoint](checkpoints/2026-09-26-グローバルの廃止-道具の側と全PJへの展開.md)
 - [x] 2026-09-26 ループのひな型の判断役を「較正前は人へ回す」既定にし、統括役に育てる段階の振る舞いを足した（個人の開発PJの2つ目の改善メモ） → [checkpoint](checkpoints/2026-09-26-ループのひな型の初回お試しの反映-全件.md)
 - [x] 2026-09-26 個人の開発PJから届いたループのひな型の改善メモ9件を全件反映（項目を順番に回す・一覧のファイル・コミットの工程とゲート・触ってはいけない場所・実行の間だけの上限・更新時の表示・振り返り・リンタの案内・記録の関門がメッセージの「記録なし:」を読む） → [checkpoint](checkpoints/2026-09-26-ループのひな型の初回お試しの反映-全件.md)
-- [x] 2026-09-26 `init-rules`のClaude版とCodex版を1枚にし（Claude版を土台に、どちらでも通じる書き方へ）、`install.sh`が両方へ同じものを配るようにした。Claudeで実走確認、Codexはモデルのエラーで未確認 → [checkpoint](checkpoints/2026-09-26-init-rulesの一本化-Claude版を土台に1枚へ.md)
-- [x] 2026-09-26 グローバルの共通ルールを廃止し、このPCの全23PJの`AGENTS.md`へ書き込んだ（`CLAUDE.md`は`AGENTS.md`へ統一、個人の運用は全部）。`install.sh`はグローバルのブロックを外す → [checkpoint](checkpoints/2026-09-26-グローバルの廃止-道具の側と全PJへの展開.md)
-- [x] 2026-09-26 導入をAIが選択肢で案内する`install-rules`スキルを追加し、PJ書き込みで個人の運用4つ（自動commit・自動push・worktree・ツール名）をPJごとに選べるようにした（コミットの書き方・memory・AI署名・§8・§9は必須）。PJは`AGENTS.md`に統一し`CLAUDE.md`は作らない → [checkpoint](checkpoints/2026-09-26-導入の案内と個人方針の選択-スキルとPJごとの選択.md)
-- [x] 2026-09-26 共通ルールの正本を1枚にし（`rules/common-rules.md`→`tools/build-rules.py`でClaude版・Codex版・PJ書き込み版）、PJへ書き込む`tools/embed-rules.py`と上限の分割測定を追加 → [checkpoint](checkpoints/2026-09-26-共通ルールのPJ書き込み-正本の1枚化と書き込み道具.md)
 
 ## 進行中
 (なし)

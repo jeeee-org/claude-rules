@@ -99,3 +99,4 @@
 - [AGENTS.md「Git運用（共通ルール§5の差分）」] 「AI署名（…）は付けない（既存コミットに合わせる）。」「コミット規約: 日本語subject 1行（50字目安）＋…」「push: 共通ルール§5の既定どおり…」／§5.2が全リポになり、3行とも共通ルールの繰り返しになった（常時読み込み372B）／3行とも消す（確定）
 - [rules/common-rules.md冒頭の移行の1行] 共通ルールのブロックの残りが1,105B／次に1項足すと上限に迫る／他PCの移行が済んだら、予定どおりこの1行を先に消して空きを作る（仮説）
 - [報告・閲覧専用のPC] 最上位の`effortLevel: "high"`が残っていた（Opus 5.5では効かない）ので消した。出力スタイルにあった英数字と日本語の間の空白の決まりは§9と重なるので消した（出力スタイルは配布対象外という決定どおり）
+- **反映（2026-09-30）**: 確定の4件。①`tools/check-limits.sh`がグローバルで`~/.claude/rules/`、PJで`.claude/rules/`の`.md`のうち`paths:`の無いものを合計して測る（`paths:`のあるものは件数だけ。`CLAUDE.md`の判定は残した。空でも害は無く、中身が入れば常時読み込みに載るため）。テスト`tools/tests/test_check_limits.py`を足した ②共通ルール冒頭を「PJにも、その上位のディレクトリにも`CLAUDE.md`を作らない」に ③`audit-prompts`の見る範囲に`~/.claude/rules/`・`.claude/rules/`・上位のディレクトリの`AGENTS.md`・`CLAUDE.md`、閲覧専用のPCでは本文を出すだけ、をREADMEにも ④このリポの`AGENTS.md`の「Git運用」から共通ルールの繰り返しの3行を消した。移行の1行は予定どおり他PCの移行の後。⇒ [反映済み → tools/check-limits.sh・rules/common-rules.md・skills/audit-prompts/SKILL.md・README.md・AGENTS.md]

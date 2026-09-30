@@ -151,9 +151,6 @@ Claude Code / Codexへのプロジェクト指示書（自動で読み込まれ�
 
 - リモート: `https://github.com/jeeee-org/claude-rules.git`（**public**・個人OSS）
 - **main直接編集・直pushでよい**（§5.1 worktree必須の例外）。
-- push: 共通ルール§5の既定どおり**1作業ごとにcommit＋自動push**（事前承認不要）。
-- コミット規約: 日本語subject 1行（50字目安）＋ 空行 ＋ bodyに「何を・なぜ・どう・影響範囲」。
-- AI署名（`Co-Authored-By: Claude` / `🤖 Generated with ...`）は**付けない**（既存コミットに合わせる）。
 - ツール名quorum / claude-rulesはこのリポの主題なのでコミット本文に書いてよい（§5.2禁止①の例外）。
 
 ## その他
