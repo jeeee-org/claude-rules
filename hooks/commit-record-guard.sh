@@ -143,6 +143,7 @@ case "$head_part" in *--dry-run*|*--amend*) exit 0 ;; esac
 # 理由付きの例外: **このcommitのメッセージ**に`記録なし: <理由>`（`No-Record:`）の行があれば通す。
 # 後追いの監査とpushの関門と同じ書き方で、理由が履歴に残る（環境変数との二重指定を要らなくする）。
 # 見るのはcommitのメッセージだけ——`-m`の引数・`-F -`に渡すヒアドキュメント・`-F <ファイル>`。
+# 1文字のオプションをまとめた形（`-qm`・`-am`・`-qF`）も拾う（`\s-m`だけでは`-qm`の記録なしが効かなかった）。
 # 同じ呼び出しで書く別のファイルの中身に同じ行があっても効かない。python3が無ければ見ない（環境変数で通す）
 if command -v python3 >/dev/null 2>&1; then
   exempt=$(python3 - "$cmd" "$(read_json '.cwd')" <<'PY' 2>/dev/null
@@ -158,16 +159,16 @@ for i, line in enumerate(lines):
     seg = line[m.start():]
     rest = "\n".join([seg] + lines[i + 1:])
     hd = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", seg)
-    if hd and re.search(r"(?:-F\s*-|--file[= ]-)(?:\s|$)", seg):
+    if hd and re.search(r"(?:\s-[A-Za-z]*F\s*-|--file[= ]-)(?:\s|$)", seg):
         body = []
         for x in lines[i + 1:]:
             if x.strip() == hd.group(2):
                 break
             body.append(x)
         msgs.append("\n".join(body))
-    for mm in re.finditer(r"(?:\s-m|\s--message)(?:=|\s+)(\"((?:[^\"\\]|\\.)*)\"|'([^']*)'|(\S+))", rest):
+    for mm in re.finditer(r"(?:\s-[A-Za-z]*m|\s--message)(?:=|\s+)(\"((?:[^\"\\]|\\.)*)\"|'([^']*)'|(\S+))", rest):
         msgs.append(mm.group(2) or mm.group(3) or mm.group(4) or "")
-    ff = re.search(r"\s(?:-F|--file)(?:=|\s+)(\"([^\"]+)\"|'([^']+)'|(\S+))", seg)
+    ff = re.search(r"\s(?:-[A-Za-z]*F|--file)(?:=|\s+)(\"([^\"]+)\"|'([^']+)'|(\S+))", seg)
     if ff and (ff.group(2) or ff.group(3) or ff.group(4)) != "-":
         try:
             msgs.append(open(os.path.join(cwd, os.path.expanduser(ff.group(2) or ff.group(3) or ff.group(4))), encoding="utf-8").read())

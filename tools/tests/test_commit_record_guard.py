@@ -79,6 +79,26 @@ class GuardTest(unittest.TestCase):
         r = run_hook(f'git commit -a -F {self.repo.parent / "msg.txt"}', self.repo)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_まとめたオプションのmの記録なしでも通す(self):
+        for opt in ('-qm', '-am', '-qam'):
+            with self.subTest(opt=opt):
+                self.touch('app.py', f'x = {opt}\n')
+                r = run_hook(f'git commit {opt} "件名\n\n本文\n\n記録なし: 調べ物メモへの追記のみ"', self.repo)
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_まとめたオプションのFの記録なしでも通す(self):
+        self.touch('app.py', 'x = 2\n')
+        (self.repo.parent / 'msg.txt').write_text('整形\n\n記録なし: 空白の整形のみ\n', encoding='utf-8')
+        r = run_hook(f'git commit -qaF {self.repo.parent / "msg.txt"}', self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = run_hook("git commit -qF - <<'EOF'\n整形のみ\n\n記録なし: 空白の整形のみ\nEOF", self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_まとめたオプションでも記録なしの行が無ければ止まる(self):
+        self.touch('app.py', 'x = 2\n')
+        r = run_hook('git commit -qm "直した"', self.repo)
+        self.assertEqual(r.returncode, 2)
+
     def test_書き込むファイルの中身の記録なしでは通さない(self):
         self.touch('app.py', 'x = 2\n')
         r = run_hook("cat > note.txt <<'EOF'\n記録なし: これはファイルの中身\nEOF\ngit commit -am '直した'", self.repo)
