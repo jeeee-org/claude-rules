@@ -1352,18 +1352,20 @@ def cmd_rules(a):
         mark = {"promoted": "採用中", "retired": "廃止", "shadow": "影で検証中"}[r["status"]]
         print(f"{r['id']} [{mark}] 工程{r['step']}・問い{r['question']}: {rl.describe(r['check'])} で不合格を検出")
         print(f"    実績: 検出{s['fired']}回（正しい{s['tp']}・誤り{s['fp']}・未確定{s['unknown']}）、見逃し{s['missed']}回")
+        if r["status"] == "retired" and r.get("retired_note"):
+            print(f"    廃止の理由: {r['retired_note']}")
         if ready:
             print(f"    → 昇格の条件を満たしました（正しい検出{need}回以上・誤りなし）。採用するなら `loopctl.py promote {r['id']}`")
         elif r["status"] == "promoted":
             g = gate_stats().get((r["step"], r["id"]))
             need2 = p.get("sunset_min_runs", 10)
             if g and g["runs"] >= need2 and g["fails"] == 0:
-                print(f"    → 採用後{g['runs']}回走って一度も落としていません。外す候補（`loopctl.py retire {r['id']}`）")
+                print(f"    → 採用後{g['runs']}回走って一度も落としていません。外す候補（`loopctl.py retire {r['id']} --note <理由>`）")
         elif r["status"] == "shadow" and s["fp"]:
-            print(f"    → 誤検出があります。廃止するなら `loopctl.py retire {r['id']}`")
+            print(f"    → 誤検出があります。廃止するなら `loopctl.py retire {r['id']} --note <理由>`")
 
 
-def set_rule_status(rid: str, status: str, force: bool = False) -> dict:
+def set_rule_status(rid: str, status: str, force: bool = False, note: str = "") -> dict:
     rs = load_rules()
     for r in rs:
         if r["id"] == rid:
@@ -1379,6 +1381,8 @@ def set_rule_status(rid: str, status: str, force: bool = False) -> dict:
                     raise LoopError(f"{rid} は昇格の条件を満たしていません（正しい検出{s['tp']}/{need}回・誤り{s['fp']}回）。承知で採るなら --force")
             r["status"] = status
             r[f"{status}_at"] = now()
+            if note:
+                r[f"{status}_note"] = note
             save_rules(rs)
             return r
     raise LoopError(f"ルール {rid} はありません（`loopctl.py rules`で一覧）")
@@ -1390,7 +1394,11 @@ def cmd_promote(a):
 
 
 def cmd_retire(a):
-    r = set_rule_status(a.rule_id, "retired")
+    # 外した理由を残す。rules.json に残る廃止のルールは同じ候補の再登録を防ぐが、理由が無いと
+    # 後から「なぜ外したか」を読めず、見直す時に同じ検討をやり直す
+    if not a.note.strip():
+        raise LoopError("廃止の理由を --note で書く（誤検出が多い・当たらない等。後から外した訳を読めるように）")
+    r = set_rule_status(a.rule_id, "retired", note=a.note.strip())
     print(f"{r['id']} を廃止しました")
 
 
@@ -1450,7 +1458,7 @@ def cmd_gate_stats(a):
         for step, key, n in cands:
             print(f"  - 工程{step}: {key}（{n}回）")
         print("  ※ 当たりゼロには「上流で捕れている」「見えていない」「抑止が効いている」の3通りがある。外すかは人が決める。"
-              "ゲートのスクリプトから行を消す／昇格したルールなら `loopctl.py retire <id>`")
+              "ゲートのスクリプトから行を消す／昇格したルールなら `loopctl.py retire <id> --note <理由>`")
 
 
 def cmd_accept_self(a):
@@ -1792,7 +1800,7 @@ def main(argv=None):
     sub.add_parser("gate-stats", help="検査ごとの打率と、外す候補")
     sub.add_parser("accept-self", help="人が直したループ自身のファイルを、この実行の基準として控え直す")
     pr = sub.add_parser("promote", help="ルールを決定論ゲートへ採用する（人が承認）"); pr.add_argument("rule_id"); pr.add_argument("--force", action="store_true")
-    rt = sub.add_parser("retire", help="ルールを廃止する"); rt.add_argument("rule_id")
+    rt = sub.add_parser("retire", help="ルールを廃止する（理由を --note で残す）"); rt.add_argument("rule_id"); rt.add_argument("--note", required=True)
     bl = sub.add_parser("block"); bl.add_argument("step"); bl.add_argument("reason")
     bl.add_argument("--ask", help="人に選んでもらう問い"); bl.add_argument("--options", nargs="*", help="選択肢（2つ以上）")
     bl.add_argument("--recommend", help="推奨する選択肢"); bl.add_argument("--qid", help="問いの型のid（較正の単位。既定 ask:<工程の型>）")

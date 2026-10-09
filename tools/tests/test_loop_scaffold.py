@@ -861,8 +861,13 @@ class LoopRunTest(unittest.TestCase):
         self.assertIn('retire r-2', out)
         p = self.ctl('promote', 'r-2', ok=False)
         self.assertIn('条件を満たしていません', p.stderr)
-        self.ctl('retire', 'r-2')
+        p = self.ctl('retire', 'r-2', '--note', ' ', ok=False)
+        self.assertIn('理由', p.stderr)
+        self.assertEqual(self.rules()[0]['status'], 'shadow')
+        self.ctl('retire', 'r-2', '--note', '人の正解と食い違った')
         self.assertEqual(self.rules()[0]['status'], 'retired')
+        self.assertEqual(self.rules()[0]['retired_note'], '人の正解と食い違った')
+        self.assertIn('廃止の理由: 人の正解と食い違った', self.ctl('rules').stdout)
 
     def test_人が後から訂正すると実績も変わる(self):
         self.seed_rule('r-3', {'kind': 'need_file', 'args': ['x.md']}, [(True, 'auto_fail', None)] * 5)

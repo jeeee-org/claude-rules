@@ -115,7 +115,7 @@ python3 .claude/loop/bin/loopctl.py calibrate --apply  # 閾値と誤りの例�
 ```bash
 python3 .claude/loop/bin/loopctl.py rules              # 候補と実績（検出回数・正しい/誤り・見逃し）
 python3 .claude/loop/bin/loopctl.py promote <ルールid>  # 採用（人が承認）。以後その工程の決定論ゲートで効く
-python3 .claude/loop/bin/loopctl.py retire <ルールid>   # 廃止
+python3 .claude/loop/bin/loopctl.py retire <ルールid> --note "<理由>"   # 廃止（理由は rules.json に残り、rules に出る）
 ```
 
 - ルールは「検査に落ちたら不合格」の検出器だけ。検査はファイルの有無・パターンの有無・禁止パターン・idの網羅の4種の組み合わせだけ（判断役に自由なコードを書かせない）。
