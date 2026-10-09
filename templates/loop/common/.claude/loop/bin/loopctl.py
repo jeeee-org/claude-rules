@@ -420,6 +420,50 @@ def limit_reason(st: dict, p: dict, adding_shard: int = 0) -> str | None:
     return None
 
 
+def pipeline_problems(raw: dict, p: dict) -> list[str]:
+    """工程の定義の書き間違いを、実行を始める前に洗い出す。
+
+    前提（after）に無い工程idを書くと、着手の判定はその前提を「状態に無い＝済み」と読み、順序の強制が
+    黙って外れる。型（`*/record`）が何にも当たらない時も同じ。循環した前提はどの工程も始められない。
+    工程役・ゲートのファイルが無いことには、その工程に着いてから気づく。"""
+    ids = [s["id"] for s in p.get("steps", [])]
+    known = set(ids)
+    tids = [t["id"] for t in (raw.get("per_item") or {}).get("steps", [])]
+    out = []
+    for sd in p.get("steps", []):
+        for d in sd.get("after", []):
+            if any(c in d for c in "*?["):
+                # 項目が0件で始めた時は、項目ごとの工程に当たる型は後から当たる
+                if not any(fnmatch(x, d) for x in ids if x != sd["id"]) \
+                        and not any(fnmatch(f"ITEM/{t}", d) for t in tids):
+                    out.append(f"{sd['id']} の前提 {d} はどの工程にも当たりません")
+            elif d not in known:
+                out.append(f"{sd['id']} の前提 {d} は工程にありません")
+    graph = {sid: [d for d in after_of(p, sid) if d in known] for sid in ids}
+    color: dict[str, int] = {}
+
+    def cyclic(sid: str) -> bool:
+        color[sid] = 1
+        for d in graph[sid]:
+            if color.get(d) == 1 or (d not in color and cyclic(d)):
+                return True
+        color[sid] = 2
+        return False
+
+    loops = [sid for sid in ids if sid not in color and cyclic(sid)]
+    if loops:
+        out.append(f"前提が循環しています（{loops[0]} から辿れる）")
+    agent_dirs = (LOOP_DIR.parent / "agents", Path.home() / ".claude" / "agents")
+    for name in sorted(loop_agents(p)):
+        if not any((d / f"{name}.md").is_file() for d in agent_dirs):
+            out.append(f"エージェント {name} の定義（.claude/agents/{name}.md）がありません")
+    for sd in p.get("steps", []):
+        for k in ("gate", "precheck"):
+            if sd.get(k) and not (LOOP_DIR / sd[k]).is_file():
+                out.append(f"{sd['id']} の {k} {sd[k]} がありません（.claude/loop/ からのパス）")
+    return out
+
+
 def halt(st: dict, reason: str) -> None:
     st["active"] = False
     st["halted"] = reason
@@ -457,6 +501,10 @@ def cmd_begin(a):
     ids = [x["id"] for x in p.get("steps", [])]
     if len(ids) != len(set(ids)):
         raise LoopError("pipeline.json の工程idが重複しています")
+    probs = pipeline_problems(raw, p)
+    if probs:
+        raise LoopError("pipeline.json の書き間違いで始められません:\n- " + "\n- ".join(probs[:10])
+                        + (f"\n- ほか{len(probs) - 10}件" if len(probs) > 10 else ""))
     with locked():
         st = {
             "run_id": time.strftime("%Y%m%d-%H%M%S", time.localtime(now())),

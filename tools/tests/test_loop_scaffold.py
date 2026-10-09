@@ -444,6 +444,35 @@ class LoopRunTest(unittest.TestCase):
         self.assertIn('枝の工程', p.stderr)
         self.assertIn(json.loads((self.loop / 'pipeline.json').read_text())['steps'][2]['id'], p.stderr)
 
+    def test_前提に無い工程を書いたらbeginが止める(self):
+        # 止めないと、着手の判定が無い前提を「済み」と読み、順序の強制が黙って外れる
+        self.set_pipeline(lambda cfg: cfg['steps'][2].__setitem__('after', ['desing']))
+        p = self.ctl('begin', ok=False)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn('desing', p.stderr)
+        self.assertFalse((self.loop / 'state.json').exists())
+
+    def test_何にも当たらない前提の型をbeginが止める(self):
+        self.set_pipeline(lambda cfg: cfg['steps'][-1].__setitem__('after', ['*/recrod']))
+        p = self.ctl('begin', ok=False)
+        self.assertIn('*/recrod', p.stderr)
+
+    def test_循環した前提をbeginが止める(self):
+        def fn(cfg):
+            cfg['steps'][0]['after'] = [cfg['steps'][1]['id']]
+        self.set_pipeline(fn)
+        p = self.ctl('begin', ok=False)
+        self.assertIn('循環', p.stderr)
+
+    def test_工程役やゲートのファイルが無ければbeginが止める(self):
+        def fn(cfg):
+            cfg['steps'][0]['worker'] = 'dev-requirement'
+            cfg['steps'][1]['gate'] = 'gates/desgin.sh'
+        self.set_pipeline(fn)
+        p = self.ctl('begin', ok=False)
+        self.assertIn('dev-requirement', p.stderr)
+        self.assertIn('gates/desgin.sh', p.stderr)
+
     def test_未完了があれば残りを名指しして続けさせる(self):
         self.ctl('begin')
         out = self.stop()
