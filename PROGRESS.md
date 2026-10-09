@@ -15,7 +15,7 @@
 3. 既存PJを開いたら`/migrate-rules`で記録ルールの改訂に揃える（未移行15PJ。モノレポのPJは残り16タスクを`--repo tasks/<name>`で1つずつ）
 
 ## 完了
-- [x] 2026-10-09 論文3本（WikiSkill・SKILL.state・HEXIS）の知見をループのひな型へ3点反映（`begin`で`pipeline.json`の書き間違いを止める・`retire`に理由を必須で残す・統括役は要約の後に`status`を読み直す）→ [checkpoint](checkpoints/2026-10-09-論文の知見の反映-ループのひな型3点.md)
+- [x] 2026-10-09 論文3本（WikiSkill・SKILL.state・HEXIS）の知見をループのひな型へ3点反映（`begin`で`pipeline.json`の書き間違いを止める・`retire`に理由を必須で残す・統括役は要約の後に`status`を読み直す）。個人の開発PJへ配布済み（`9c9bbdd`）→ [checkpoint](checkpoints/2026-10-09-論文の知見の反映-ループのひな型3点.md)
 - [x] 2026-10-01 記録の関門の「記録なし」が`-qm`・`-am`・`-qF`のようにまとめたオプションで効かなかったのを直した（別のPJからの連絡）→ [checkpoint](checkpoints/2026-10-01-記録の関門-まとめたオプション.md)
 - [x] 2026-09-30 個人の開発PJのループを2026-09-30の版へ上げ（統括役は手の直しに差分を当てた）、上限の確かめ方の手順の1件を受けて直した → [checkpoint](checkpoints/2026-09-30-指示の見直し-監査のスキルと配る流れ.md)
 - [x] 2026-09-30 業務のテストPJのループのひな型の課題2件を反映（pushのゲートを成果物のコミットで見る・非対話の統括役が`halt`で止まり`status --check`で分かる）→ [checkpoint](checkpoints/2026-09-30-指示の見直し-監査のスキルと配る流れ.md)
