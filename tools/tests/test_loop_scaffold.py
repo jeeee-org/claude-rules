@@ -1444,6 +1444,104 @@ class PerItemOrderTest(PerItemTest):
         self.assertEqual(self.state()['items'], [])
 
 
+class TrendTest(PerItemTest):
+    """実行をまたいで工程の型ごとの一発で通った率を溜め、指示を変えた前後を比べる。"""
+
+    ITEMS = ['q1', 'q2', 'q3', 'q4']
+
+    def cfg(self, fn):
+        p = self.loop / 'pipeline.json'
+        cfg = json.loads(p.read_text())
+        fn(cfg)
+        p.write_text(json.dumps(cfg, ensure_ascii=False))
+
+    def run_once(self, reworked, reason='〔節が無い〕'):
+        """全工程を完了にし、fix のうち reworked の項目だけ差し戻し1回にして閉じる。"""
+        self.tick()
+        self.ctl('begin', '--items', *self.ITEMS)
+        st = json.loads((self.loop / 'state.json').read_text())
+        for sid, x in st['steps'].items():
+            x['status'] = 'done'
+            if sid.endswith('/fix') and sid.split('/')[0] in reworked:
+                x['rework'] = 1
+                x['notes'] = [{'t': 1000, 'text': f'差し戻し: 決定論ゲート不合格 {reason}'}]
+        (self.loop / 'state.json').write_text(json.dumps(st, ensure_ascii=False))
+        self.ctl('finish')
+        return st['run_id']
+
+    def tick(self):
+        # 実行idは開始の時刻（秒）から作るので、実行ごとに時計を進める
+        self.env['LOOP_NOW'] = str(int(self.env['LOOP_NOW']) + 60)
+
+    def runs(self):
+        return [json.loads(l) for l in (self.loop / 'stats/runs.jsonl').read_text().splitlines()]
+
+    def setUp(self):
+        super().setUp()
+        self.cfg(lambda c: c.__setitem__('trend', {'min_items': 4, 'min_drop': 0.1}))
+
+    def test_閉じると工程の型ごとの一発で通った率を溜める(self):
+        self.run_once(['q1'])
+        r = self.runs()[0]
+        self.assertEqual(r['steps']['fix'], {'done': 4, 'first_pass': 3, 'rework': 1,
+                                             'reasons': {'決定論ゲート: 節が無い': 1}})
+        self.assertEqual(r['steps']['triage']['done'], 1)
+        self.assertIn('step', r['fp']['fix'])
+
+    def test_閉じずに次を始めても前の実行を残す(self):
+        self.ctl('begin', '--items', *self.ITEMS)
+        st = json.loads((self.loop / 'state.json').read_text())
+        st['steps']['triage']['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st, ensure_ascii=False))
+        self.tick()
+        self.ctl('begin', '--force', '--items', *self.ITEMS)
+        self.assertEqual(self.runs()[0]['steps']['triage']['done'], 1)
+
+    def test_指示を変えて率が下がったら戻す候補と出す(self):
+        self.run_once([])
+        self.cfg(lambda c: c['per_item']['steps'][1].__setitem__('instructions', '新しい指示'))
+        self.run_once(['q1', 'q2'])
+        out = self.ctl('trend', 'fix').stdout
+        self.assertIn('変えたもの step', out)
+        self.assertIn('前100%（4/4）→ 後50%（2/4）', out)
+        self.assertIn('戻す候補', out)
+        self.assertNotIn('工程decide', out)
+
+    def test_件数が足りなければ判定を保留する(self):
+        self.cfg(lambda c: c['trend'].__setitem__('min_items', 10))
+        self.run_once([])
+        self.cfg(lambda c: c['per_item']['steps'][1].__setitem__('instructions', '新しい指示'))
+        self.run_once(['q1', 'q2'])
+        self.assertIn('判定保留', self.ctl('trend', 'fix').stdout)
+
+    def test_変えていない工程は同じ版に束ねる(self):
+        self.run_once(['q1'])
+        self.run_once([])
+        out = self.ctl('trend', 'fix').stdout
+        self.assertIn('88%（7/8・2実行）', out)
+        self.assertIn('指示を変えた記録はまだ無い', out)
+
+    def test_工程役の定義を変えても版が変わる(self):
+        self.run_once([])
+        agent = self.root / '.claude/agents/step-worker.md'
+        agent.write_text(agent.read_text() + '\n追記\n')
+        self.run_once([])
+        self.assertIn('worker', self.ctl('trend', 'fix').stdout)
+
+    def test_振り返りに指示を変えた工程の前後を出す(self):
+        self.run_once([])
+        self.cfg(lambda c: c['per_item']['steps'][1].__setitem__('instructions', '新しい指示'))
+        self.tick()
+        self.ctl('begin', '--items', *self.ITEMS)
+        st = json.loads((self.loop / 'state.json').read_text())
+        for x in st['steps'].values():
+            x['status'] = 'done'
+        (self.loop / 'state.json').write_text(json.dumps(st, ensure_ascii=False))
+        out = self.ctl('retro').stdout
+        self.assertIn('指示を変えた工程の前後', out)
+        self.assertIn('工程fix', out)
+
+
 class LimitAndRetroTest(PerItemTest):
     """begin --limit（実行の間だけの上限）と retro（振り返りの数字）。"""
 

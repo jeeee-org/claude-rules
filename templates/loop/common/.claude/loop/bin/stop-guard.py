@@ -30,6 +30,7 @@ def nudge_finish(p: dict) -> int:
             g["count"], g["fingerprint"] = 0, "finish"
         if g["count"] >= limit:
             st["active"], st["finished"], st["finished_at"] = False, True, lc.now()
+            lc.record_run(st)
             st["stop_guard"] = {"count": 0, "fingerprint": ""}
             lc.save_json(lc.STATE, st)
             print(json.dumps({"systemMessage": "ループ: 全工程が完了したまま閉じられなかったので、実行を閉じました（finish）。"

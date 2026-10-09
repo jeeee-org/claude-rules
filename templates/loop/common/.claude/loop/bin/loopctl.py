@@ -38,6 +38,8 @@ CALIBRATION = JUDGE_DIR / "calibration.json"
 LESSONS = JUDGE_DIR / "lessons.md"
 RULES = JUDGE_DIR / "rules.json"
 GATE_STATS = LOOP_DIR / "stats" / "gates.jsonl"
+# 実行ごとの、工程の型ごとの一発で通った率と差し戻しの理由。実行をまたいで溜め、指示を変えた前後を比べる
+RUNS = LOOP_DIR / "stats" / "runs.jsonl"
 # 実行中に工程役が書き換えてはいけない、ループ自身のファイル（改善案6: ループの中でループを改修しない）
 SELF_FILES = ("bin/*.py", "gates/*", "pipeline.json", "../agents/*.md", "../settings.json")
 REPO = LOOP_DIR.parent.parent
@@ -495,6 +497,7 @@ def cmd_begin(a):
         old = load_json(STATE)
         if old and old.get("active") and not a.force:
             raise LoopError("進行中の実行があります。続けるなら `resume`、捨てて始め直すなら `begin --force`")
+        record_run(old)  # 閉じずに捨てた前の実行も、済んだ工程の分は残す
     p = expand(raw, items or [])
     if override:
         p = with_overrides(p, override)
@@ -514,6 +517,7 @@ def cmd_begin(a):
             "base_commit": head_commit(),
             "base_preexisting": preexisting_changes(),
             "self_snapshot": self_snapshot(),
+            "instr_fp": instr_fingerprints(raw),
             "shards_started": 0,
             "goal": a.goal or "",
             "steps": {s["id"]: {"status": "pending", "shards": {}, "rework": 0, "notes": [], "blocker": None}
@@ -1592,6 +1596,18 @@ def step_times(s: dict):
     return start, end
 
 
+def rework_notes(s: dict) -> list[tuple[str, list[str]]]:
+    """工程の差し戻しごとに（誰が差し戻したか, 理由の鍵）。鍵はゲートの〔検査〕、無ければ本文の頭。"""
+    out = []
+    for n in s.get("notes", []):
+        if not n["text"].startswith("差し戻し: "):
+            continue
+        body = n["text"][len("差し戻し: "):]
+        kind = next((k for pre, k in REWORK_KINDS if body.startswith(pre)), "その他")
+        out.append((kind, re.findall(r"〔([^〕]+)〕", body) or [body[:60]]))
+    return out
+
+
 def retro_data(st: dict, p: dict) -> dict:
     steps = st["steps"]
     end_t = st.get("finished_at") or now()
@@ -1599,14 +1615,9 @@ def retro_data(st: dict, p: dict) -> dict:
     kinds: dict[str, int] = {}
     reasons: dict[str, int] = {}
     for s in steps.values():
-        for n in s.get("notes", []):
-            if not n["text"].startswith("差し戻し: "):
-                continue
-            body = n["text"][len("差し戻し: "):]
-            kind = next((k for pre, k in REWORK_KINDS if body.startswith(pre)), "その他")
+        for kind, keys in rework_notes(s):
             kinds[kind] = kinds.get(kind, 0) + 1
-            keys = re.findall(r"〔([^〕]+)〕", body)
-            for k in keys or [body[:60]]:
+            for k in keys:
                 reasons[f"{kind}: {k}"] = reasons.get(f"{kind}: {k}", 0) + 1
     items = []
     tmpl = (p.get("per_item") or {}).get("steps", [])
@@ -1649,6 +1660,148 @@ def retro_data(st: dict, p: dict) -> dict:
     }
 
 
+# ---------- 工程役の指示を育てる（実行をまたいだ一発で通った率） ----------
+
+def instr_fingerprints(raw: dict) -> dict:
+    """工程の型ごとに、工程役の出来を左右するもの（工程の定義・工程役とレビュー役の定義・ゲート）の指紋。
+    実行の開始時に控える。終わってから取ると、間に直した指示を前の実行の版と取り違える。"""
+    defs = {s["id"]: s for s in raw.get("steps", [])}
+    defs.update({t["id"]: t for t in (raw.get("per_item") or {}).get("steps", [])})
+    agent_dirs = (LOOP_DIR.parent / "agents", Path.home() / ".claude" / "agents")
+
+    def h(b: bytes) -> str:
+        return hashlib.sha256(b).hexdigest()[:12]
+
+    out = {}
+    for tid, sd in defs.items():
+        fp = {"step": h(json.dumps(sd, sort_keys=True, ensure_ascii=False).encode())}
+        for k in ("worker", "reviewer"):
+            if sd.get(k):
+                f = next((d / f"{sd[k]}.md" for d in agent_dirs if (d / f"{sd[k]}.md").is_file()), None)
+                fp[k] = h(f.read_bytes()) if f else "-"
+        if sd.get("gate"):
+            g = LOOP_DIR / sd["gate"]
+            fp["gate"] = h(g.read_bytes()) if g.is_file() else "-"
+        out[tid] = fp
+    return out
+
+
+def template_of(st: dict, sid: str) -> str:
+    for it in st.get("items", []):
+        if sid.startswith(it + "/"):
+            return sid[len(it) + 1:]
+    return sid
+
+
+def run_summary(st: dict) -> dict:
+    """この実行の、工程の型ごとの完了数・一発で通った数（差し戻し0で完了）・差し戻しの理由。"""
+    by: dict[str, dict] = {}
+    for sid, s in st.get("steps", {}).items():
+        x = by.setdefault(template_of(st, sid), {"done": 0, "first_pass": 0, "rework": 0, "reasons": {}})
+        for kind, keys in rework_notes(s):
+            for k in keys:
+                x["reasons"][f"{kind}: {k}"] = x["reasons"].get(f"{kind}: {k}", 0) + 1
+        if s.get("status") == "done":
+            x["done"] += 1
+            x["first_pass"] += 1 if not s.get("rework") else 0
+            x["rework"] += s.get("rework", 0)
+    return {"run": st.get("run_id"), "started_at": st.get("started_at"), "fp": st.get("instr_fp"), "steps": by}
+
+
+def load_runs() -> list:
+    if not RUNS.exists():
+        return []
+    return [json.loads(l) for l in RUNS.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+def record_run(st: dict | None) -> None:
+    """実行の要約を runs.jsonl へ書く（同じ実行は書き直す）。閉じた時と、次の begin で前の実行を捨てる時に呼ぶ。"""
+    if not st or not st.get("run_id") or not st.get("steps"):
+        return
+    rows = [r for r in load_runs() if r.get("run") != st["run_id"]] + [run_summary(st)]
+    rows.sort(key=lambda r: r.get("started_at") or 0)
+    RUNS.parent.mkdir(parents=True, exist_ok=True)
+    RUNS.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+
+
+def trend(runs: list, p: dict) -> list[dict]:
+    """工程の型ごとに、指紋が同じ実行を1つの版に束ね、最新の版と1つ前の版の一発で通った率を比べる。
+    指紋の無い実行（この記録より前の版）は比べない。"""
+    cfg = p.get("trend", {})
+    need, drop = cfg.get("min_items", 10), cfg.get("min_drop", 0.1)
+    tids = [s["id"] for s in p.get("steps", []) if not s.get("item")] + \
+        [t["id"] for t in (p.get("per_item") or {}).get("steps", [])]
+    out = []
+    for tid in tids:
+        vers: list[dict] = []
+        for r in runs:
+            fp, x = (r.get("fp") or {}).get(tid), r.get("steps", {}).get(tid)
+            if not fp or not x:
+                continue
+            if not vers or vers[-1]["fp"] != fp:
+                vers.append({"fp": fp, "runs": 0, "done": 0, "first_pass": 0, "reasons": {}})
+            v = vers[-1]
+            v["runs"] += 1
+            v["done"] += x["done"]
+            v["first_pass"] += x["first_pass"]
+            for k, n in x.get("reasons", {}).items():
+                v["reasons"][k] = v["reasons"].get(k, 0) + n
+        if not vers:
+            continue
+        cur = vers[-1]
+        row = {"step": tid, "versions": len(vers), "cur": cur, "prev": vers[-2] if len(vers) > 1 else None,
+               "rate": cur["first_pass"] / cur["done"] if cur["done"] else None}
+        prev = row["prev"]
+        if prev:
+            row["changed"] = sorted(k for k in set(cur["fp"]) | set(prev["fp"]) if cur["fp"].get(k) != prev["fp"].get(k))
+            row["prev_rate"] = prev["first_pass"] / prev["done"] if prev["done"] else None
+            if cur["done"] < need or prev["done"] < need:
+                row["verdict"] = f"判定保留（完了が前{prev['done']}件・後{cur['done']}件。比べるのはどちらも{need}件から）"
+            elif row["rate"] <= row["prev_rate"] - drop:
+                row["verdict"] = "下がった。戻す候補（戻すかは人が決める）"
+            elif row["rate"] >= row["prev_rate"] + drop:
+                row["verdict"] = "上がった"
+            else:
+                row["verdict"] = "変わらず"
+        out.append(row)
+    return out
+
+
+def trend_lines(rows: list, only_changed: bool = False) -> list[str]:
+    def pct(v):
+        return "-" if v is None else f"{v * 100:.0f}%"
+    out = []
+    for r in rows:
+        c = r["cur"]
+        if r["prev"]:
+            pv = r["prev"]
+            out.append(f"- 工程{r['step']}: 変えたもの {', '.join(r['changed'])}。一発で通った率 "
+                       f"前{pct(r['prev_rate'])}（{pv['first_pass']}/{pv['done']}）→ 後{pct(r['rate'])}（{c['first_pass']}/{c['done']}）。{r['verdict']}")
+        elif not only_changed:
+            out.append(f"- 工程{r['step']}: 一発で通った率 {pct(r['rate'])}（{c['first_pass']}/{c['done']}・{c['runs']}実行）。指示を変えた記録はまだ無い")
+        else:
+            continue
+        top = sorted(c["reasons"].items(), key=lambda x: -x[1])[:3]
+        if top and not only_changed:
+            out.append("    多い差し戻し: " + "、".join(f"{k}（{n}回）" for k, n in top))
+    return out
+
+
+def cmd_trend(a):
+    p = pipeline()
+    runs = load_runs()
+    st = load_json(STATE)
+    if st and st.get("active"):
+        runs = [r for r in runs if r.get("run") != st.get("run_id")] + [run_summary(st)]  # 進行中の分も見る
+    rows = [r for r in trend(runs, p) if not a.step or r["step"] == a.step]
+    if not rows:
+        print("比べられる記録がまだありません（実行を閉じると stats/runs.jsonl に溜まる。指紋はこの版から begin した実行だけ）")
+        return
+    print("\n".join(trend_lines(rows)))
+    print("※ 項目の難しさは揃っていないので、件数が少ないうちの差は雑音を含む。戻す・残すは人が決め、"
+          "戻したら理由を candidates.md に残す")
+
+
 def item_elapsed(x: dict) -> str:
     """項目の経過。本線と全体が違う（枝の人待ちがある）時は両方出す。止まっていた時間は除いた数を先に出す。"""
     m, t = x.get("elapsed_main"), x["elapsed"]
@@ -1680,6 +1833,11 @@ def cmd_retro(a):
     out.append(f"- 判断役が自動で決めて人が後から正した件数 {d['judge_wrong']}件（決定論ゲートの誤判定は数えられないので、気づいたら`[ひな型]`で1行）")
     if d["blocked_now"]:
         out.append("- いま止まっている: " + "、".join(d["blocked_now"]))
+    runs = [r for r in load_runs() if r.get("run") != st.get("run_id")] + [run_summary(st)]
+    changed = trend_lines(trend(runs, p), only_changed=True)
+    if changed:
+        out.append("- 指示を変えた工程の前後（`loopctl.py trend`）:")
+        out += ["  " + l for l in changed]
     print("\n".join(out))
 
 
@@ -1758,6 +1916,7 @@ def set_active(flag: bool, msg: str, finished: bool = False):
         st["finished"] = finished
         if finished:
             st["finished_at"] = now()
+            record_run(st)
         st.pop("halted", None)
         st["stop_guard"] = {"count": 0, "fingerprint": ""}
         save_json(STATE, st)
@@ -1800,6 +1959,7 @@ def main(argv=None):
     sub.add_parser("gate-stats", help="検査ごとの打率と、外す候補")
     sub.add_parser("accept-self", help="人が直したループ自身のファイルを、この実行の基準として控え直す")
     pr = sub.add_parser("promote", help="ルールを決定論ゲートへ採用する（人が承認）"); pr.add_argument("rule_id"); pr.add_argument("--force", action="store_true")
+    tr = sub.add_parser("trend", help="工程の型ごとの一発で通った率と、指示を変えた前後の比較"); tr.add_argument("step", nargs="?")
     rt = sub.add_parser("retire", help="ルールを廃止する（理由を --note で残す）"); rt.add_argument("rule_id"); rt.add_argument("--note", required=True)
     bl = sub.add_parser("block"); bl.add_argument("step"); bl.add_argument("reason")
     bl.add_argument("--ask", help="人に選んでもらう問い"); bl.add_argument("--options", nargs="*", help="選択肢（2つ以上）")
@@ -1824,7 +1984,7 @@ def main(argv=None):
         {
             "begin": cmd_begin, "status": cmd_status, "next": cmd_next, "start": cmd_start, "submit": cmd_submit,
             "review": cmd_review, "gate": cmd_gate, "judge": cmd_judge, "decide": cmd_decide, "override": cmd_override,
-            "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire,
+            "calibrate": cmd_calibrate, "rules": cmd_rules, "promote": cmd_promote, "retire": cmd_retire, "trend": cmd_trend,
             "gate-stats": cmd_gate_stats, "accept-self": cmd_accept_self, "block": cmd_block, "unblock": cmd_unblock, "reopen": cmd_reopen,
             "add-item": cmd_add_item, "show": cmd_show, "pending": cmd_pending, "answer": cmd_answer, "retro": cmd_retro, "scratch": cmd_scratch, "halt": cmd_halt,
             "pause": lambda a: set_active(False, "一時停止しました（Stopフックは催促しません）"),
