@@ -21,12 +21,15 @@
 # AI帰属行を出さない設定（settings/attribution.json）も**無い時だけ**足します。Claude Codeが
 # commit・PRへ帰属行を付けることも、モデルへ付けよと指示することも止まる（共通ルール§5.2 禁止②の出どころ）。
 #   ./install.sh --no-attribution-settings （または CLAUDE_RULES_ATTRIBUTION_SETTINGS=0 ./install.sh）
+# auto memoryを切る設定（settings/memory.json）も**無い時だけ**足します（共通ルール§6を指示でなく設定で効かせる）。
+#   ./install.sh --no-memory-settings （または CLAUDE_RULES_MEMORY_SETTINGS=0 ./install.sh）
 set -euo pipefail
 
 INSTALL_CODEX="${CLAUDE_RULES_INSTALL_CODEX:-1}"
 REGISTER_HOOKS="${CLAUDE_RULES_REGISTER_HOOKS:-1}"
 DISPLAY_SETTINGS="${CLAUDE_RULES_DISPLAY_SETTINGS:-1}"
 ATTRIBUTION_SETTINGS="${CLAUDE_RULES_ATTRIBUTION_SETTINGS:-1}"
+MEMORY_SETTINGS="${CLAUDE_RULES_MEMORY_SETTINGS:-1}"
 KEEP_GLOBAL_RULES=0
 for arg in "$@"; do
   case "$arg" in
@@ -34,9 +37,10 @@ for arg in "$@"; do
     --no-hook-register) REGISTER_HOOKS=0 ;;
     --no-display-settings) DISPLAY_SETTINGS=0 ;;
     --no-attribution-settings) ATTRIBUTION_SETTINGS=0 ;;
+    --no-memory-settings) MEMORY_SETTINGS=0 ;;
     --keep-global-rules) KEEP_GLOBAL_RULES=1 ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
-    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings / --no-attribution-settings / --keep-global-rules）" >&2; exit 2 ;;
+    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    *) echo "不明な引数: $arg（使えるのは --no-codex / --no-hook-register / --no-display-settings / --no-attribution-settings / --no-memory-settings / --keep-global-rules）" >&2; exit 2 ;;
   esac
 done
 case "$INSTALL_CODEX" in
@@ -54,6 +58,10 @@ esac
 case "$ATTRIBUTION_SETTINGS" in
   0|false|no|'') ATTRIBUTION_SETTINGS=0 ;;
   *) ATTRIBUTION_SETTINGS=1 ;;
+esac
+case "$MEMORY_SETTINGS" in
+  0|false|no|'') MEMORY_SETTINGS=0 ;;
+  *) MEMORY_SETTINGS=1 ;;
 esac
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -318,6 +326,36 @@ apply_attribution_settings() {
   echo "  - settings.jsonにAI帰属行を出さない設定（attribution）を足しました（控え: $SETTINGS.bak。止めるなら --no-attribution-settings）"
 }
 apply_attribution_settings
+
+# auto memoryを切る設定（正本 settings/memory.json）。共通ルール§6の「memoryは使わない」は指示なので
+# 守られる保証が無く、auto memoryは手元のセッションでは既定でオン（Claude Codeの文書）。設定で切れば
+# 書き込みも読み込みも起きない。理由はNOTES.md（記憶を他の人へ引き継げるよう、リポのNOTES.mdに置く）。
+# **キーが無い時だけ足す**。PCで決めた値があれば上書きせず、オンなら知らせる
+apply_memory_settings() {
+  if [ "$MEMORY_SETTINGS" = 0 ]; then
+    echo "※ auto memoryを切る設定は省きました（--no-memory-settings）。" >&2
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "※ jqが無いため、auto memoryを切る設定を足せませんでした。settings/memory.json を手で $SETTINGS へ写してください" >&2
+    return 0
+  fi
+  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  if ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+    echo "⚠ $SETTINGS がJSONとして読めません。auto memoryを切る設定を省きました。" >&2
+    return 0
+  fi
+  if jq -e 'has("autoMemoryEnabled")' "$SETTINGS" >/dev/null 2>&1; then
+    jq -e '.autoMemoryEnabled == false' "$SETTINGS" >/dev/null 2>&1 ||
+      echo "⚠ $SETTINGS の autoMemoryEnabled がオンです（上書きしていません）。共通ルール§6に沿うなら false にしてください" >&2
+    return 0
+  fi
+  cp "$SETTINGS" "$SETTINGS.bak"
+  jq --slurpfile m "$SRC_DIR/settings/memory.json" '. + $m[0]' "$SETTINGS" > "$SETTINGS.tmp" &&
+    mv "$SETTINGS.tmp" "$SETTINGS"
+  echo "  - settings.jsonにauto memoryを切る設定（autoMemoryEnabled: false）を足しました（控え: $SETTINGS.bak。止めるなら --no-memory-settings）"
+}
+apply_memory_settings
 
 if [ "$INSTALL_CODEX" = 1 ]; then
   mkdir -p "$CODEX_HOME/hooks"
