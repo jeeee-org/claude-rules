@@ -26,7 +26,7 @@ claude-rulesの共通ルール（4軸 + checkpoint, 進行ルール, Git, memory
 `git rev-parse`がリポジトリ外を示した場合のみ実施。既にリポジトリなら丸ごとスキップする。**リモート作成は外向き操作なので、実行前にリポジトリ名とprivateで良いかをユーザーに確認してから行う。**
 1. `git init`（既定ブランチを`main`に：`git init -b main`）。
 2. コミットメール（GH007回避）：`git config user.email "$(gh api user --jq .login)@users.noreply.github.com"`（`gh`が使えなければユーザーに確認する）。
-3. リポジトリ名を決める（既定はディレクトリ名）。**作成先のownerはユーザーに確認する**（個人アカウントかorgか）。候補は`gh api user --jq .login`（個人）と`gh org list`（org）で出せる。**アカウント名・org名をこのファイルに直書きしない**——このスキルは業務PCへも配布されるため。**初回はprivate**で作成しoriginを設定：
+3. リポジトリ名を決める（既定はディレクトリ名）。**作成先のownerはユーザーに確認する**（個人アカウントかorgか）。候補は`gh api user --jq .login`（個人）と`gh org list`（org）で出せる。**アカウント名・org名をこのファイルに直書きしない**——このスキルはL13やNUCへも配布されるため。**初回はprivate**で作成しoriginを設定：
    ```bash
    gh repo create <owner>/<name> --private --source=. --remote=origin
    ```
