@@ -70,11 +70,11 @@ PJにも、その上位のディレクトリにも`CLAUDE.md`を作らない（�
 
 ## 5. Git運用
 
-リモート・ブランチ戦略<!-- if:worktree -->・worktree配置先<!-- endif -->はPJの`{{PJ}}`に従う。**<!-- if:worktree -->§5.1・<!-- endif -->§5.2は全PJ必須**。
+リモート・ブランチ戦略<!-- if:worktree -->・worktree配置先<!-- endif -->はPJの`{{PJ}}`に従う。**§5.1・§5.2は全PJ必須**。
 
 - **コミットは1作業ごと**（1ドキュメント・1機能・1設定変更など）。<!-- if:autocommit -->まとまりが完了するたび指示を待たずにcommitする。<!-- endif --><!-- if:!autocommit -->commitはユーザーの指示で行う。<!-- endif -->無関係な変更を混ぜない。<!-- if:autocommit -->作業が無ければ不要。<!-- endif -->
 <!-- if:autopush -->
-- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`。PJの`{{PJ}}`に「pushはユーザー指示時のみ」とあれば従う。<!-- if:worktree -->push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。<!-- endif -->
+- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`。PJの`{{PJ}}`に「pushはユーザー指示時のみ」とあれば従う。<!-- if:worktree -->push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。<!-- endif --><!-- if:!worktree -->push先は§5.1のとおり既定でmain。<!-- endif -->
 <!-- endif -->
 <!-- if:!autopush -->
 - **pushはユーザーの指示があった時だけ**。
@@ -88,6 +88,11 @@ PJにも、その上位のディレクトリにも`CLAUDE.md`を作らない（�
 - 業務/共有のリモート連携リポは**worktree必須**：①元cloneを直接編集しない ②develop / main上で直接編集しない（worktreeに切ったブランチで作業）③終了後に`git worktree remove`と元cloneの`git pull --ff-only`まで行う（飛ばすと次に読む内容が古い）。
 - worktreeは**PJグループごとに集約**、ディレクトリ名はブランチ名の**slashをhyphenに置換**。配置パス・グループ名はPJの`{{PJ}}`に書く。
 - 低リスクの個人リポでPJの`{{PJ}}`が「main直接編集・直push」を明示していれば免除。
+<!-- endif -->
+<!-- if:!worktree -->
+### 5.1 ブランチの既定（main直接）
+
+- **既定はmain（PJの既定ブランチ）を直接編集し、mainへ直接commit・push**する。featureブランチ・worktreeは作らない。PJの`{{PJ}}`に指定がある時だけ、その指定（worktree・ブランチ・PR）に従う。
 <!-- endif -->
 
 ### 5.2 コミットメッセージ規約

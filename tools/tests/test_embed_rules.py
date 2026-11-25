@@ -190,7 +190,9 @@ class EmbedTest(unittest.TestCase):
         self.assertIn('commitはユーザーの指示で行う', text)
         self.assertNotIn('### 5.1 worktreeルール', text)
         self.assertNotIn('禁止①', text)
-        self.assertNotIn('push先は§5.1', text)
+        self.assertNotIn('push先は§5.1のworktree', text)
+        self.assertIn('### 5.1 ブランチの既定（main直接）', text)
+        self.assertIn('push先は§5.1のとおり既定でmain', text)
         for must in ('subjectは日本語50字目安', 'ファイルベースmemory', '禁止②', '## 8. 外部に出す文面', '## 9. 応答の書き方'):
             self.assertIn(must, text)
 
@@ -200,7 +202,8 @@ class EmbedTest(unittest.TestCase):
         self.assertIn('選択 なし。', text.splitlines()[0])
         self.assertIn('pushはユーザーの指示があった時だけ', text)
         self.assertNotIn('pushは既定で自動', text)
-        self.assertIn('**§5.2は全PJ必須**', text)
+        self.assertIn('**§5.1・§5.2は全PJ必須**', text)
+        self.assertIn('### 5.1 ブランチの既定（main直接）', text)
 
     def test_2回目は前回の選択と書き込み先を引き継ぐ(self):
         self.run_tool('--target', 'codex', '--options', 'worktree,toolname')

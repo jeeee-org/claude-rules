@@ -49,7 +49,7 @@ description: claude-rulesの共通ルールをPJの`AGENTS.md`へ入れる・最
 | Codexだけ | `--target codex`：`AGENTS.md`に書く |
 
 ### 3) 個人の運用（初回・選び直し）
-**選択肢は`python3 "$clone/tools/embed-rules.py" --list-options`の出力から作る**（ここに書き写さない。正本は道具の側）。複数選択で聞き、選ばなかった時に代わりに入る決まり（例：pushはユーザーの指示があった時だけ）も添える。1つも選ばないのも可（`--options none`）。利用者自身のPJなら「全部（いつもの運用）」を推奨にしてよい（`--options all`）。
+**選択肢は`python3 "$clone/tools/embed-rules.py" --list-options`の出力から作る**（ここに書き写さない。正本は道具の側）。複数選択で聞き、選ばなかった時に代わりに入る決まり（例：pushはユーザーの指示があった時だけ）も添える。1つも選ばないのも可（`--options none`）。利用者自身の個人PJなら「worktree以外の全部（いつもの運用）」を推奨にする（`--options autocommit,autopush,toolname`。既定はmain直接編集・直push）。worktreeで作業する業務・共有リポだけ`worktree`も選ぶ。
 
 あわせて、**選択ではなく常に入るもの**（一覧の最後の行）を1行で伝える。外したいと言われても外さない——全版で必須と決めてある。
 
@@ -68,7 +68,7 @@ description: claude-rulesの共通ルールをPJの`AGENTS.md`へ入れる・最
 
 1. `python3 "$clone/tools/embed-rules.py" --scan <PJを並べた場所>`で一覧を出し、状態ごとに数えて伝える（最新／古い／未書き込み／`CLAUDE.md`が残っている）。
 2. **古い**ものは、前回の選択のまま`python3 "$clone/tools/embed-rules.py" <PJ>`で最新にする（聞き直さない）。**「commit-msgフックなし／古い」と出たもの**（版は最新でも、このPCの`.git/hooks`にAI帰属行を取り除くフックが無い）も同じコマンドで置く。`.git/hooks`だけが変わるのでcommitは要らない。
-3. **未書き込み**のものは、まとめて聞く：同じ読み手・同じ個人の運用で全部に入れるか（利用者自身のPJなら「両方・全部」を推奨）、PJごとに選ぶか。そのあと2の4)を1つずつ行う。
+3. **未書き込み**のものは、まとめて聞く：同じ読み手・同じ個人の運用で全部に入れるか（利用者自身の個人PJなら「両方・worktree以外の全部」を推奨）、PJごとに選ぶか。そのあと2の4)を1つずつ行う。
 4. どのPJも、書き込む前に`git status`が綺麗かを見る。未commitの変更があるPJは飛ばし、最後に一覧で伝える（無関係な変更を混ぜない）。
 5. commitとpushは各PJのGit運用に従う（`pushはユーザー指示時のみ`のPJはcommitまで）。
 

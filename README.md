@@ -163,7 +163,7 @@ Opus 5.5（とOpus 4.8以降・Sonnet 5以降）では、Claude Codeのto-doツ�
 
 **入れる時はAIに頼めばよい**——Claude Code / Codexに「このPJにルールを入れて」「全PJのルールを最新にして」と言うと、`install-rules`スキルが読み手・個人の運用を選択肢で聞いてから下のコマンドを組み立てる。オプションを覚える必要は無い。
 
-- **個人の運用はPJごとに選ぶ**：commitを指示を待たずに行う（`autocommit`）・pushを自動で行う（`autopush`）・worktreeで作業する（`worktree`）・内部ツール名を書かない（`toolname`）。選ばないと代わりの決まり（「pushはユーザーの指示があった時だけ」等）が入るか、その決まりが無くなる。選択はマーカー行に残り、更新で引き継ぐ。自分のPJは全部入り（`all`）。
+- **個人の運用はPJごとに選ぶ**：commitを指示を待たずに行う（`autocommit`）・pushを自動で行う（`autopush`）・worktreeで作業する（`worktree`）・内部ツール名を書かない（`toolname`）。選ばないと代わりの決まり（「pushはユーザーの指示があった時だけ」「既定はmain直接編集・直push。worktreeはPJに指定がある時だけ」等）が入るか、その決まりが無くなる。選択はマーカー行に残り、更新で引き継ぐ。自分の個人PJは`worktree`抜き（`autocommit,autopush,toolname`）、worktreeが要る業務・共有リポだけ`worktree`も選ぶ（2026-11-25から）。
 - **常に入る（選べない）**：コミットの書き方・memory不使用・AI署名なし・外に出す文面でMarkdownを使わない・応答の書き方。
 
 ```bash
