@@ -1,4 +1,4 @@
-<!-- claude-rules:embed:begin (版 b7522fb / embed-both / 選択 autocommit,autopush,worktree,toolname。claude-rules/tools/embed-rules.pyが書き込む。中を編集しない — 出典 https://github.com/jeeee-org/claude-rules のrules/common-rules.md) -->
+<!-- claude-rules:embed:begin (版 60838e6 / embed-both / 選択 autocommit,autopush,toolname。claude-rules/tools/embed-rules.pyが書き込む。中を編集しない — 出典 https://github.com/jeeee-org/claude-rules のrules/common-rules.md) -->
 # 共通ルール（全PJ共通の下地）
 
 全PJ共通の下地。このブロックの外に書くPJ固有の指示が優先する。
@@ -69,18 +69,16 @@ PJにも、その上位のディレクトリにも`CLAUDE.md`を作らない（�
 
 ## 5. Git運用
 
-リモート・ブランチ戦略・worktree配置先はPJの`AGENTS.md`に従う。**§5.1・§5.2は全PJ必須**。
+リモート・ブランチ戦略はPJの`AGENTS.md`に従う。**§5.1・§5.2は全PJ必須**。
 
 - **コミットは1作業ごと**（1ドキュメント・1機能・1設定変更など）。まとまりが完了するたび指示を待たずにcommitする。無関係な変更を混ぜない。作業が無ければ不要。
-- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`。PJの`AGENTS.md`に「pushはユーザー指示時のみ」とあれば従う。push先は§5.1のworktreeブランチ（main/develop直pushは例外宣言のあるPJだけ）。
+- **pushは既定で自動**。リモートがあればcommitに続けて**事前承認なし**で`git push`。PJの`AGENTS.md`に「pushはユーザー指示時のみ」とあれば従う。push先は§5.1のとおり既定でmain。
 - **必ず事前確認**：`--force` / `--force-with-lease`のpush、履歴改変（`reset --hard`、`rebase`後のpush）。
 - `GH007`（メール非公開保護）で弾かれたら`git config user.email <username>@users.noreply.github.com`。
 
-### 5.1 worktreeルール（リモート連携リポでは必須）
+### 5.1 ブランチの既定（main直接）
 
-- 業務/共有のリモート連携リポは**worktree必須**：①元cloneを直接編集しない ②develop / main上で直接編集しない（worktreeに切ったブランチで作業）③終了後に`git worktree remove`と元cloneの`git pull --ff-only`まで行う（飛ばすと次に読む内容が古い）。
-- worktreeは**PJグループごとに集約**、ディレクトリ名はブランチ名の**slashをhyphenに置換**。配置パス・グループ名はPJの`AGENTS.md`に書く。
-- 低リスクの個人リポでPJの`AGENTS.md`が「main直接編集・直push」を明示していれば免除。
+- **既定はmain（PJの既定ブランチ）を直接編集し、mainへ直接commit・push**する。featureブランチ・worktreeは作らない。PJの`AGENTS.md`に指定がある時だけ、その指定（worktree・ブランチ・PR）に従う。
 
 ### 5.2 コミットメッセージ規約
 
@@ -99,7 +97,7 @@ PJにも、その上位のディレクトリにも`CLAUDE.md`を作らない（�
 
 ## 7. PJ側AGENTS.mdの書き分け
 
-**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート・worktree・ブランチ・コミット規約・自動pushの要否／技術スタック・検証コマンド）。共通ルールのブロックは書き込み元で更新するので、中を編集しない。
+**PJ固有の差分だけ**を書く（目的・前提・最大のリスク／`REQUIREMENTS.md`の性質／リモート・ブランチ・コミット規約・自動pushの要否／技術スタック・検証コマンド）。共通ルールのブロックは書き込み元で更新するので、中を編集しない。
 
 ## 8. 外部に出す文面にMarkdownを使わない
 
@@ -150,7 +148,6 @@ Claude Code / Codexへのプロジェクト指示書（自動で読み込まれ�
 ## Git運用（共通ルール§5の差分）
 
 - リモート: `https://github.com/jeeee-org/claude-rules.git`（**public**・個人OSS）
-- **main直接編集・直pushでよい**（§5.1 worktree必須の例外）。
 - ツール名quorum / claude-rulesはこのリポの主題なのでコミット本文に書いてよい（§5.2禁止①の例外）。
 
 ## その他
